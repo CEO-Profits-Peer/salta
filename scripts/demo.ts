@@ -1,0 +1,4 @@
+import { createExperiment, runExperiment, DEFAULT_CONFIG } from '../src/features/experiments/experiment';
+const t0 = Date.now();
+const { state } = runExperiment(createExperiment({ ...DEFAULT_CONFIG, generations: 8 }), { onGeneration: (s) => { const h = s.history[s.history.length - 1]; console.log(`gen ${h.generation}  tester best ${h.testerBest.toFixed(2)}  builder best ${h.builderBest.toFixed(3)}  verified ${h.bestVerifiedScore.toFixed(3)}  valid ${(h.validCandidateRate * 100).toFixed(0)}%`); } });
+console.log(`baseline score ${state.baselineEval.train.score.toFixed(3)} -> verified ${state.bestVerified.train.score.toFixed(3)} (held-out ${state.baselineEval.heldOut.score.toFixed(3)} -> ${state.bestVerified.heldOut.score.toFixed(3)}), ${state.decisions.filter((d) => d.promoted).length} promotions, archive ${state.archive.length}, ${Date.now() - t0}ms`);
