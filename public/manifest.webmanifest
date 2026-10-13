@@ -1,0 +1,21 @@
+{
+  "name": "Vier Säulen",
+  "short_name": "4 Säulen",
+  "description": "Learn, Body, Image, Money — dein Tag in vier Säulen.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f2f7",
+  "theme_color": "#007aff",
+  "lang": "de",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Flow starten", "url": "/flow", "short_name": "Flow" },
+    { "name": "Stats", "url": "/stats", "short_name": "Stats" }
+  ]
+}

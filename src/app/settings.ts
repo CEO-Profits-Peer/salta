@@ -8,5 +8,5 @@ export const PROFILES: Record<Profile, { label: string; blurb: string; maxActive
   balanced: { label: 'Balanced', blurb: 'Moderate populations, two experiments in parallel.', maxActive: () => 2, cfg: { testerPop: 24, builderPop: 24, generations: 10, mazeSize: 15 } },
   performance: { label: 'Performance', blurb: 'Large populations, more parallel workers (capped by your cores).', maxActive: (c) => Math.max(2, Math.min(4, c - 1)), cfg: { testerPop: 48, builderPop: 48, generations: 20, mazeSize: 21 } },
 };
-interface SettingsState { profile: Profile; maxActive: number; pauseWhenHidden: boolean; onboarded: boolean; set: (p: Partial<Omit<SettingsState, 'set'>>) => void }
-export const useSettings = create<SettingsState>()(persist((set) => ({ profile: 'balanced', maxActive: 2, pauseWhenHidden: true, onboarded: false, set: (p) => set(p) }), { name: 'aes-settings' }));
+interface SettingsState { profile: Profile; maxActive: number; pauseWhenHidden: boolean; onboarded: boolean; lastSeenDay: number; set: (p: Partial<Omit<SettingsState, 'set'>>) => void }
+export const useSettings = create<SettingsState>()(persist((set) => ({ profile: 'balanced', maxActive: 2, pauseWhenHidden: true, onboarded: false, lastSeenDay: 0, set: (p) => set(p) }), { name: 'aes-settings' }));

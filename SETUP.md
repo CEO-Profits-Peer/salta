@@ -1,3 +1,31 @@
+# Descent: living labyrinth (v0.3)
+
+**Upgrading from v0.2:** extract this zip over your repo folder (overwrite, keep `.git`), then **delete these two files by hand**:
+`src/pages/Overview.tsx` and `src/pages/Challenges.tsx` (replaced by Play / Arena). Then `npm install` (new dev deps) and
+`git add . && git commit -m "Descent v0.3" && git push`.
+
+## What it is now
+- **Play**: today's 5 versions of Descent (control + 4 AI challengers). Fog, keys/doors, hunting Wardens, light budget, boons.
+- **Lab**: live Probe / Builder / Instructor chambers with a cull feed that states WHY each agent was removed.
+- **Chronicle**: auto-written daily patch notes, master-quality chart, and the Idea Forge (every feature the Builders invented,
+  its measured effect on held-out floors, and whether it was merged into the master).
+- **Arena**: your own runs. (Verified global leaderboards need a server evaluator. Not built yet.)
+- **Workshop**: the old v0.2 maze experiments, playground, chambers and agent library.
+
+## How the daily loop works (all real computation)
+1. Builders evolve game versions; they can invent new features by composing a placement with an effect and a power
+   (11 effect types: teleport pairs, springs, beacons, light blooms, freezes, decoys, wall breaches, ice, sonar pulses, tides, hushes).
+2. Probes (evolving defect hunters) check the candidates; an independent oracle verifies their reports. Verified defects quarantine a version.
+3. Five versions go live. Simulated players (5 personas, clearly labelled as models) and YOUR runs, ratings and votes decide popularity.
+4. The winner becomes master only if it also passes the Instructor's held-out + regression checks. Best ideas from the other versions are
+   ablation-tested and merged (max 2/day). A patch note is written. The next day opens.
+5. If you return after N days, the lab computes the N missing days on your device (capped at 14). Slice 4 moves this to a server schedule.
+
+Honest limits: "creative features" are compositions inside a fixed, validated grammar, not free-form code. "Fun" is a model
+(simulated personas + your feedback), not measured real-user fun until real telemetry exists (slice 4).
+
+---
+
 # AI Evolution Studios — Setup (v0.2: UI + workers + Supabase schema)
 
 ## Run locally (Windows PowerShell)
