@@ -1,3 +1,31 @@
+# Hearthworld (v0.4 "Dawn")
+
+**Upgrading from v0.3:** extract over your repo folder (overwrite, keep `.git`), run `npm install`, then
+`git add . && git commit -m "Hearthworld v0.4" && git push`. Nothing to delete this time. New Supabase steps: none.
+
+## What it is
+Four AI tribes try to survive in a seeded open world (water, grass, forest, rock, sand; spring-to-winter seasons; day and night).
+- Settlers move, forage, hunt, farm, quarry, build huts/farms/wells/granaries/palisades, breed, fight wolves, catch fevers and die.
+  Every death has a recorded cause: starvation, thirst, cold, wolf, fever, old age, accident.
+- 7 inherited genes mutate each generation (thrift, courage, sociability, curiosity, industry, hardiness, huntBias).
+  Every gene has a trade-off. Villages also carry a doctrine (hunt/farm/build/stock/defend) that mutates when a village splits,
+  so villages drift towards different strategies. Fallen villages leave ruins; newcomers arrive if fewer than 3 villages survive.
+- Click any settler: see its current job and WHY (real need/priority numbers), genes, parents and life story.
+- **Be the Wanderer** (WASD, E gather, F feed/warm, G leave supplies) or just observe. Speeds: pause / 1x / 2x / 8x / 32x.
+  At 1x a day is one minute and a year about 32 minutes.
+- **Evolution** tab: population and mean gene per village over time, selection differential (breeders vs non-breeders), death causes.
+- Returning later: the world computes the time you were away on your device (1 tick per 3 real seconds, at most 1 year) and shows an Almanac.
+- **Delve** keeps Descent (v0.3) as a side mode. **Workshop** keeps the v0.2 maze experiments.
+
+## Honest limits
+- No server runs the world: it advances while the tab is open or when you return. A shared, always-on world is a later slice.
+- Balance was tuned with headless runs (populations stabilise around 150 across ~6 villages, mixed death causes), but real play will show
+  what feels off. Migrants found new villages instantly at the new site (no walking yet).
+- Wanderer actions are simple (gather, feed, supply). Buildings, tech tree and Lab-style rule invention are planned for 4.1-4.2.
+- Canvas rendering and the worker were verified by build + jsdom smoke tests only, not in a real browser.
+
+---
+
 # Descent: living labyrinth (v0.3)
 
 **Upgrading from v0.2:** extract this zip over your repo folder (overwrite, keep `.git`), then **delete these two files by hand**:

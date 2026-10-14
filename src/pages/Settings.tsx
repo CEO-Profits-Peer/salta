@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { PROFILES, useSettings, type Profile } from '../app/settings';
 import { useStore } from '../app/store';
 import { useWorld } from '../app/worldStore';
+import { useHearth } from '../app/hearthStore';
 import { detectCapabilities } from '../engine/compute/capabilities';
 import { cloudConfigured } from '../integrations/supabase/client';
 import { useAuth } from '../integrations/supabase/auth';
 import { Btn, Card, Field, SectionTitle, cx, inputCls } from '../components/ui';
 
 export function Settings() {
-  const s = useSettings(), caps = useMemo(detectCapabilities, []), clearAll = useStore((x) => x.clearAll), a = useAuth(), resetWorld = useWorld((x) => x.reset), [confirmW, setConfirmW] = useState(false);
+  const s = useSettings(), caps = useMemo(detectCapabilities, []), clearAll = useStore((x) => x.clearAll), a = useAuth(), resetWorld = useWorld((x) => x.reset), newHearth = useHearth((x) => x.newWorld), [confirmH, setConfirmH] = useState(false), [confirmW, setConfirmW] = useState(false);
   const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [confirm, setConfirm] = useState(false);
   return (
     <div className="space-y-5"><h1 className="text-2xl font-semibold">Settings</h1>
@@ -25,7 +26,8 @@ export function Settings() {
             <div className="flex flex-wrap gap-2"><Btn variant="primary" disabled={a.busy || !email || pw.length < 8} onClick={() => void a.signIn(email, pw)}>Sign in</Btn><Btn disabled={a.busy || !email || pw.length < 8} onClick={() => void a.signUp(email, pw)}>Create account</Btn><Btn disabled={a.busy || !email} onClick={() => void a.reset(email)}>Forgot password</Btn></div>
             {a.error && <p className="text-xs text-bad">{a.error}</p>}{a.info && <p className="text-xs text-ok">{a.info}</p>}</div>)}</Card>
       <Card><SectionTitle>Detected capabilities</SectionTitle><dl className="mono grid grid-cols-2 gap-y-1 text-xs sm:w-96"><dt className="text-slate-500">Web Workers</dt><dd>{String(caps.webWorkers)}</dd><dt className="text-slate-500">IndexedDB</dt><dd>{String(caps.indexedDB)}</dd><dt className="text-slate-500">WebGPU</dt><dd>{caps.webgpu ? 'detected (not used yet)' : 'no'}</dd><dt className="text-slate-500">Cores</dt><dd>{caps.cores}</dd></dl></Card>
-      <Card><SectionTitle>Living world</SectionTitle>{confirmW ? <div className="flex items-center gap-3 text-sm"><span>Restart the world from Day 1? Patch notes, ideas and your runs are deleted.</span><Btn variant="danger" onClick={() => { void resetWorld(); setConfirmW(false); }}>Restart world</Btn><Btn onClick={() => setConfirmW(false)}>Cancel</Btn></div> : <Btn variant="danger" onClick={() => setConfirmW(true)}>Restart the world</Btn>}</Card>
+      <Card><SectionTitle>Hearthworld</SectionTitle>{confirmH ? <div className="flex items-center gap-3 text-sm"><span>Start a brand-new world? The current tribes, graves and history are deleted.</span><Btn variant="danger" onClick={() => { void newHearth(); setConfirmH(false); }}>New world</Btn><Btn onClick={() => setConfirmH(false)}>Cancel</Btn></div> : <Btn variant="danger" onClick={() => setConfirmH(true)}>Start a new Hearthworld</Btn>}</Card>
+      <Card><SectionTitle>Delve (Descent) world</SectionTitle>{confirmW ? <div className="flex items-center gap-3 text-sm"><span>Restart the world from Day 1? Patch notes, ideas and your runs are deleted.</span><Btn variant="danger" onClick={() => { void resetWorld(); setConfirmW(false); }}>Restart world</Btn><Btn onClick={() => setConfirmW(false)}>Cancel</Btn></div> : <Btn variant="danger" onClick={() => setConfirmW(true)}>Restart the world</Btn>}</Card>
       <Card><SectionTitle>Local data</SectionTitle>{confirm ? <div className="flex items-center gap-3 text-sm"><span>Delete all local experiments and checkpoints?</span><Btn variant="danger" onClick={() => { void clearAll(); setConfirm(false); }}>Delete everything</Btn><Btn onClick={() => setConfirm(false)}>Cancel</Btn></div> : <div className="flex gap-2"><Btn variant="danger" onClick={() => setConfirm(true)}>Delete all local experiments</Btn><Btn onClick={() => s.set({ onboarded: false })}>Replay onboarding</Btn></div>}</Card>
     </div>
   );
