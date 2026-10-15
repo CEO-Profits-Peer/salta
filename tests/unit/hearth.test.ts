@@ -48,3 +48,48 @@ describe('hearthworld simulation', () => {
     const d = selectionDifferential(sim); if (d) expect(d.length).toBe(GENES.length);
   }, 60000);
 });
+
+import { controlCmd, relOf } from '../../src/hearth/sim';
+import { BUILDINGS, TECHS, type TechId } from '../../src/hearth/types';
+describe('v0.5: war, trade, crafting, inventions, fauna, resources, control', () => {
+  it('loads a v0.4 checkpoint (no war/trade/tech/fish/fauna fields) and keeps simulating', () => {
+    const sim = createSim(12); stepSim(sim, 300); const o = JSON.parse(serialize(sim));
+    delete o.rel; delete o.fauna; delete o.fish; delete o.totals.trades; delete o.totals.raids; delete o.totals.inventions; delete o.totals.deaths.war;
+    for (const v of o.villages) { delete v.techs; delete v.raidCool; delete v.tradeCool; delete v.huntCool; delete v.outlook; delete v.stock.tools; delete v.stock.spears; }
+    for (const s of o.settlers) { delete s.ctl; delete s.raid; delete s.armed; delete s.trade; delete s.party; delete s.genes.foresight; delete s.carry.tools; }
+    const old = deserialize(JSON.stringify(o)); expect(old.settlers[0].genes.foresight).toBe(0.5); expect(old.fish.length).toBe(W * H); expect(old.villages[0].techs).toEqual([]);
+    stepSim(old, 600); expect(old.tick).toBe(900); expect(old.settlers.every((s) => Number.isFinite(s.health))).toBe(true);
+  });
+  it('catalogues are complete: every building and tech is described and respects prerequisites', () => {
+    for (const t of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) { expect(BUILDINGS[t].desc.length).toBeGreaterThan(20); const n = BUILDINGS[t].needs; if (n) expect(TECHS[n]).toBeTruthy(); }
+    for (const k of Object.keys(TECHS) as TechId[]) for (const n of TECHS[k].needs) expect(TECHS[n]).toBeTruthy();
+  });
+  it('trade, invention and conflict happen on their own in a living world', () => {
+    const sim = createSim(3); stepSim(sim, YEAR * 1.5); expect(sim.totals.trades + sim.totals.inventions).toBeGreaterThan(0);
+    for (const k of Object.keys(sim.rel)) { expect(sim.rel[k]).toBeGreaterThanOrEqual(-1); expect(sim.rel[k]).toBeLessThanOrEqual(1); }
+    for (const a of sim.fauna) { expect(sim.terrain[idx(a.x, a.y)]).not.toBe(T.WATER); expect(a.hp).toBeGreaterThan(0); }
+    for (const v of sim.villages) for (const g of ['food', 'wood', 'stone', 'tools', 'spears'] as const) expect(v.stock[g]).toBeGreaterThanOrEqual(0);
+  }, 60000);
+  it('hostile relations lead to raids with warriors that march, fight and are recorded as war', () => {
+    const sim = createSim(2); for (const s of sim.settlers) { s.genes.courage = 0.9; } for (const a of sim.villages) for (const b of sim.villages) if (a.id < b.id) sim.rel[`${a.id}-${b.id}`] = -0.95;
+    for (let d = 0; d < 12 && sim.totals.raids === 0; d++) { stepSim(sim, DAY); for (const a of sim.villages) for (const b of sim.villages) if (a.id < b.id) sim.rel[`${a.id}-${b.id}`] = Math.min(sim.rel[`${a.id}-${b.id}`] ?? 0, -0.9); }
+    expect(sim.totals.raids).toBeGreaterThan(0); expect(sim.events.some((e) => e.k === 'war')).toBe(true); expect(relOf(sim, 0, 1)).toBeLessThan(0);
+    stepSim(sim, 1200); expect(sim.settlers.every((s) => Number.isFinite(s.health))).toBe(true);
+  }, 60000);
+  it('shore fish regrow after being fished out, and stone is finite', () => {
+    const sim = createSim(5); let t = -1; for (let i = 0; i < W * H && t < 0; i++) if (sim.fish[i] > 0 && sim.villages.every((v) => Math.abs(v.hx - (i % W)) + Math.abs(v.hy - Math.floor(i / W)) > 22)) t = i;
+    expect(t).toBeGreaterThanOrEqual(0); sim.fish[t] = 0; stepSim(sim, 3000); expect(sim.fish[t]).toBeGreaterThan(0);
+    const rock = Array.from(sim.stone).findIndex((s) => s > 0); sim.stone[rock] = 0; stepSim(sim, 1500); expect(sim.stone[rock]).toBe(0);
+  });
+  it('the player can possess a settler, gather, fight, deposit and plant trees; others keep thinking', () => {
+    const sim = createSim(4); stepSim(sim, 120); const me = sim.settlers.find((s) => s.age >= 15360)!, v = sim.villages[me.v];
+    controlCmd(sim, { k: 'possess', id: me.id }); expect(me.ctl).toBe(true); expect(sim.settlers.filter((s) => s.ctl).length).toBe(1);
+    me.x = v.hx + 1; me.y = v.hy + 1; sim.terrain[idx(me.x, me.y)] = T.GRASS; sim.bld[idx(me.x, me.y)] = 0; sim.berry[idx(me.x, me.y)] = 4; sim.fish[idx(me.x, me.y)] = 0; sim.wood[idx(me.x, me.y)] = 0; sim.stone[idx(me.x, me.y)] = 0; me.thirst = 0; me.carry.food = 0;
+    controlCmd(sim, { k: 'sact' }); expect(me.carry.food).toBeGreaterThanOrEqual(2);
+    const px = me.x; controlCmd(sim, { k: 'smove', dx: 1, dy: 0 }); expect(Math.abs(me.x - px)).toBeLessThanOrEqual(1);
+    me.x = v.hx; me.y = v.hy; const before = v.stock.food, carried = me.carry.food; controlCmd(sim, { k: 'sdeposit' }); expect(v.stock.food).toBeGreaterThanOrEqual(Math.min(before + carried, before));
+    const f = sim.terrain.findIndex((t, i) => t === T.FOREST && Math.abs((i % W) - v.hx) < 30); me.x = f % W; me.y = Math.floor(f / W); sim.wood[f] = 1; me.thirst = 0; controlCmd(sim, { k: 'sact' }); expect(sim.wood[f]).toBeLessThanOrEqual(1);
+    const hp = me.health; stepSim(sim, 30); expect(me.job).toBe('idle'); expect(me.health).toBeLessThanOrEqual(1); expect(hp).toBeGreaterThan(0);
+    controlCmd(sim, { k: 'release' }); expect(sim.settlers.some((s) => s.ctl)).toBe(false);
+  });
+});

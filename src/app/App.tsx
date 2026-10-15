@@ -8,6 +8,7 @@ import { useSettings } from './settings';
 import { cloudConfigured } from '../integrations/supabase/client';
 import { useAuth } from '../integrations/supabase/auth';
 import { World } from '../pages/World';
+import { GameMenu } from '../components/GameMenu';
 import { Evolution } from '../pages/Evolution';
 import { Delve } from '../pages/Delve';
 import { Workshop } from '../pages/Workshop';
@@ -54,7 +55,7 @@ export function App() {
         {menu && <div className="border-b border-white/10 bg-ink-950 p-3 md:hidden">{nav}</div>}
         <main className="mx-auto w-full max-w-6xl p-4 sm:p-8">
           <Boundary key={page}><motion.div key={page} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            {page === 'world' && <World />}
+            {page === 'world' && <World go={(p) => go(p as PageId)} />}
             {page === 'evolution' && <Evolution />}
             {page === 'delve' && <Delve />}
             {page === 'workshop' && <Workshop openCreate={create} />}
@@ -62,6 +63,7 @@ export function App() {
           </motion.div></Boundary>
         </main>
       </div>
+      <GameMenu go={(p) => go(p as PageId)} />
       {showOnb && !onboarded && <Onboarding done={() => { setShowOnb(false); set({ onboarded: true }); }} go={() => go('world')} />}
     </MotionConfig>
   );

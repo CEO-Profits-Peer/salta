@@ -4,7 +4,7 @@ import { command, snapshot, summarize, type Almanac, type Cmd, type Snapshot } f
 import type { Evt, Sim } from '../hearth/types';
 
 export type HIn = { type: 'init'; seed: number; checkpoint?: string } | { type: 'speed'; v: number } | { type: 'cmd'; cmd: Cmd } | { type: 'catchup'; ticks: number } | { type: 'inspect'; id: number } | { type: 'save' };
-export type HOut = { type: 'snap'; snap: Snapshot; terrain?: Uint8Array } | { type: 'checkpoint'; data: string; tick: number } | { type: 'catchup'; done: number; total: number; almanac?: Almanac } | { type: 'bio'; id: number; bio: string[] } | { type: 'error'; message: string };
+export type HOut = { type: 'snap'; snap: Snapshot; terrain?: Uint8Array } | { type: 'checkpoint'; data: string; tick: number; pop: number } | { type: 'catchup'; done: number; total: number; almanac?: Almanac } | { type: 'bio'; id: number; bio: string[] } | { type: 'error'; message: string };
 const ctx = self as unknown as { postMessage(m: HOut, t?: Transferable[]): void; onmessage: ((e: MessageEvent<HIn>) => void) | null };
 let sim: Sim | null = null, speed = 0, acc = 0, lastEvt: Evt | null = null, lastStats = 0, frame = 0, lastSave = 0, timer: ReturnType<typeof setInterval> | null = null;
 
@@ -13,7 +13,7 @@ function post(withTerrain = false) {
   if (snap.events.length) lastEvt = snap.events[snap.events.length - 1]; lastStats = sim.stats.length;
   ctx.postMessage({ type: 'snap', snap, terrain: withTerrain ? sim.terrain.slice() : undefined });
 }
-function save() { if (sim) ctx.postMessage({ type: 'checkpoint', data: serialize(sim), tick: sim.tick }); lastSave = sim?.tick ?? 0; }
+function save() { if (!sim) return; ctx.postMessage({ type: 'checkpoint', data: serialize(sim), tick: sim.tick, pop: sim.settlers.length }); lastSave = sim.tick; }
 function loop() {
   if (!sim || speed <= 0) return; acc += speed * 0.2; const n = Math.min(60, Math.floor(acc)); acc -= n;
   try { if (n > 0) stepSim(sim, n); } catch (e) { speed = 0; ctx.postMessage({ type: 'error', message: e instanceof Error ? e.message : String(e) }); return; }

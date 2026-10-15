@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useHearth } from '../app/hearthStore';
-import { CAUSES, GENES } from '../hearth/types';
+import { CAUSES, GENES, TECHS } from '../hearth/types';
 import { Card, Empty, SectionTitle } from '../components/ui';
 
 const tip = { contentStyle: { background: '#0a0d13', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, fontSize: 12 } }, ax = { stroke: '#4b5568', fontSize: 11 } as const;
@@ -23,6 +23,16 @@ export function Evolution() {
         <Card><SectionTitle>What kills settlers</SectionTitle><div className="h-56"><ResponsiveContainer><BarChart data={causes} margin={{ left: -18, right: 8 }}><CartesianGrid stroke="rgba(255,255,255,.05)" /><XAxis dataKey="cause" {...ax} /><YAxis {...ax} /><Tooltip {...tip} /><Bar dataKey="deaths" fill="#f87171" isAnimationActive={false} /></BarChart></ResponsiveContainer></div></Card>
       </div>
       <Card><SectionTitle>Village strategies (doctrine, inherited with mutation when a village splits)</SectionTitle><div className="overflow-auto"><table className="mono w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-1">Village</th><th>People</th><th>Hunt</th><th>Farm</th><th>Build</th><th>Stock</th><th>Defend</th><th>Born</th><th>Died</th></tr></thead><tbody>{villages.map((v) => <tr key={v.id} className="border-t border-white/5" style={{ opacity: v.alive ? 1 : 0.45 }}><td className="py-1.5" style={{ color: v.color }}>{v.name}{v.parent >= 0 ? ` ← ${villages[v.parent]?.name}` : ''}</td><td>{v.pop}</td>{(['hunt', 'farm', 'build', 'stock', 'defend'] as const).map((k) => <td key={k}>{Math.round(v.doctrine[k] * 100)}</td>)}<td>{v.births}</td><td>{v.deaths}</td></tr>)}</tbody></table></div></Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card><SectionTitle>Inventions & economy</SectionTitle>
+          <p className="mb-2 text-xs text-slate-500">{snap.totals.inventions} inventions · {snap.totals.trades} trades · {snap.totals.raids} raids so far.</p>
+          <div className="space-y-2">{villages.filter((v) => v.alive).map((v) => <div key={v.id}><div className="text-xs" style={{ color: v.color }}>{v.name} <span className="text-slate-600">{v.stock.tools} tools · {v.stock.spears} spears</span></div><div className="mt-0.5 flex flex-wrap gap-1">{v.techs.length ? v.techs.map((t) => <span key={t} title={TECHS[t].desc} className="rounded-full border border-amb/30 px-2 py-0.5 text-[10px] text-amb">{TECHS[t].name}</span>) : <span className="text-[11px] text-slate-600">no inventions yet</span>}</div></div>)}</div></Card>
+        <Card><SectionTitle>Diplomacy</SectionTitle>
+          <div className="max-h-64 space-y-1 overflow-auto text-xs">{snap.rel.length === 0 && <p className="text-slate-500">Fewer than two living villages.</p>}{[...snap.rel].sort((a, b) => a[2] - b[2]).map((r, i) => { const A = villages[r[0]], B = villages[r[1]], w = r[2] >= 0.3 ? 'allied' : r[2] >= 0.1 ? 'friendly' : r[2] > -0.2 ? 'neutral' : r[2] > -0.5 ? 'tense' : 'hostile'; return <div key={i} className="flex items-center justify-between"><span><span style={{ color: A.color }}>{A.name}</span> ↔ <span style={{ color: B.color }}>{B.name}</span></span><span className={r[2] <= -0.2 ? 'text-bad' : r[2] >= 0.1 ? 'text-ok' : 'text-slate-400'}>{w} ({Math.round(r[2] * 100)})</span></div>; })}</div>
+          <p className="mt-2 text-[11px] text-slate-600">Trade builds friendship; hunger, crowding, border incidents and raids erode it. Diplomacy makes wars rarer.</p></Card>
+      </div>
+      <Card><SectionTitle>Resource outlook near each village (the limits settlers must live within)</SectionTitle><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{villages.filter((v) => v.alive).map((v) => <div key={v.id} className="space-y-1"><div className="text-xs" style={{ color: v.color }}>{v.name}</div>{([['Forest', v.outlook.wood, '#34d399'], ['Berries', v.outlook.berry, '#e0526a'], ['Fish', v.outlook.fish, '#67e8f9'], ['Game', v.outlook.game, '#c9a66b'], ['Stone', v.outlook.stone, '#94a3b8']] as const).map(([l, x, c]) => <div key={l} className="grid grid-cols-[56px_1fr_30px] items-center gap-2 text-[11px]"><span className="text-slate-500">{l}</span><div className="h-1.5 rounded-full bg-white/5"><div className="h-full rounded-full" style={{ width: `${Math.round(x * 100)}%`, background: c }} /></div><span className="mono text-slate-500">{Math.round(x * 100)}</span></div>)}</div>)}</div><p className="mt-2 text-[11px] text-slate-600">Trees regrow only beside other trees, game and fish recover slowly, stone never returns. Settlers with high foresight spare resources and replant; reckless ones cut and hunt freely.</p></Card>
     </div>
   );
 }
