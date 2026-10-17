@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
-import { BUILDINGS, TECHS, type BType } from '../hearth/types';
+import { BUILDINGS, TECHS, type BaseBType } from '../hearth/types';
+import { useHearth } from '../app/hearthStore';
 import { GLYPH } from './HearthCanvas';
 import { cx } from './ui';
 
@@ -17,7 +18,7 @@ const KEYS: Record<string, [string, string][]> = {
 };
 /** Collapsible legend: symbols, buildings, inventions and controls. */
 export function Legend({ mode }: { mode: 'observe' | 'wanderer' | 'settler' }) {
-  const [open, setOpen] = useState(() => localStorage.getItem('aes-legend') === '1');
+  const [open, setOpen] = useState(() => localStorage.getItem('aes-legend') === '1'), mods = useHearth((s) => s.snap?.mods);
   const toggle = () => { setOpen(!open); localStorage.setItem('aes-legend', open ? '0' : '1'); };
   return (
     <div className="pointer-events-auto absolute bottom-3 left-3 w-[300px] max-w-[calc(100%-1.5rem)] rounded-xl border border-white/10 bg-ink-950/90 text-xs backdrop-blur">
@@ -36,8 +37,9 @@ export function Legend({ mode }: { mode: 'observe' | 'wanderer' | 'settler' }) {
           <Row icon={<Dot c="#c9a66b" r={4} />} label="Deer" desc="Easy game. Overhunting empties the forest." /><Row icon={<Dot c="#e5e7eb" r={3} />} label="Rabbit" desc="Small, quick food." /><Row icon={<Dot c="#8b5e3c" r={5} />} label="Boar" desc="Dangerous when hurt. Needs a hunting party." />
           <Row icon={<Dot c="#2d2a2e" r={6} ring="#f87171" />} label="Bear" desc="Rare and deadly. Avoids palisades." /><Row icon={<span className="text-red-400">▲</span>} label="Wolf" desc="Hunts lone settlers. Groups scare it off." />
         </Sec>
-        <Sec title="Buildings">{(Object.keys(BUILDINGS) as BType[]).map((t) => <Row key={t} icon={<span className="text-sm text-slate-200">{GLYPH[t]}</span>} label={`${BUILDINGS[t].name}${BUILDINGS[t].wood || BUILDINGS[t].stone ? ` · ${BUILDINGS[t].wood} wood${BUILDINGS[t].stone ? ` + ${BUILDINGS[t].stone} stone` : ''}` : ''}`} desc={BUILDINGS[t].desc} />)}</Sec>
+        <Sec title="Buildings">{(Object.keys(BUILDINGS) as BaseBType[]).map((t) => <Row key={t} icon={<span className="text-sm text-slate-200">{GLYPH[t]}</span>} label={`${BUILDINGS[t].name}${BUILDINGS[t].wood || BUILDINGS[t].stone ? ` · ${BUILDINGS[t].wood} wood${BUILDINGS[t].stone ? ` + ${BUILDINGS[t].stone} stone` : ''}` : ''}`} desc={BUILDINGS[t].desc} />)}</Sec>
         <Sec title="Inventions">{Object.entries(TECHS).map(([k, t]) => <Row key={k} icon={<span className="text-amb">✦</span>} label={t.name} desc={`${t.desc}${t.needs.length ? ` (needs ${t.needs.map((n) => TECHS[n].name).join(', ')})` : ''}`} />)}<p className="pt-1 text-[11px] text-slate-500">Villages invent on their own and learn from traders, loot and migrants.</p></Sec>
+        {mods && mods.creatures.length + mods.buildings.length + mods.quirks.length > 0 && <Sec title="AI-created content (Content Lab)">{mods.creatures.map((c) => <Row key={c.id} icon={<Dot c={`hsl(${c.hue} 65% 55%)`} ring={c.role === 'predator' ? '#f87171' : undefined} />} label={`${c.name} (${c.role})`} desc={`${c.hp} hp · ${c.meat} food · herds of ~${c.herd}`} />)}{mods.buildings.map((b) => <Row key={b.id} icon={<span className="text-slate-200">{b.glyph}</span>} label={`${b.name} · ${b.wood} wood${b.stone ? ` + ${b.stone} stone` : ''}`} desc={b.desc} />)}{mods.quirks.map((q) => <Row key={q.id} icon={<span>🧬</span>} label={q.name} desc={q.desc} />)}</Sec>}
         <Sec title={`Controls: ${mode}`} open>{KEYS[mode[0].toUpperCase() + mode.slice(1)].map(([k, d]) => <div key={k} className="flex gap-2 py-0.5"><span className={cx('mono w-28 shrink-0 text-slate-200')}>{k}</span><span className="text-slate-500">{d}</span></div>)}</Sec>
       </div>)}
     </div>

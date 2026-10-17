@@ -93,3 +93,90 @@ describe('v0.5: war, trade, crafting, inventions, fauna, resources, control', ()
     controlCmd(sim, { k: 'release' }); expect(sim.settlers.some((s) => s.ctl)).toBe(false);
   });
 });
+
+import { chiefCmd } from '../../src/hearth/sim';
+import { objectives, prosperity } from '../../src/hearth/chief';
+import { PRESETS, cleanSettings, decodeWorld, encodeWorld, DEFAULT_SETTINGS } from '../../src/hearth/types';
+describe('v0.6: world settings and chieftain', () => {
+  it('settings shape the world: village count, tribe size, predators, and share codes round-trip', () => {
+    const a = createSim(7, { villages: 2, settlers: 5, wolves: 0, bears: 0 }); expect(a.villages.length).toBe(2); expect(a.settlers.length).toBe(10); expect(a.wolves.length).toBe(0); expect(a.fauna.filter((x) => x.k === 'bear').length).toBe(0);
+    const b = createSim(7, { villages: 6, settlers: 10, techStart: 2 }); expect(b.villages.length).toBe(6); expect(b.villages[0].techs).toContain('tools');
+    const code = encodeWorld(1234, cleanSettings({ ...PRESETS[5].s, name: 'Evo video' })), back = decodeWorld(code)!; expect(back.seed).toBe(1234); expect(back.settings.mutation).toBe(2.8); expect(back.settings.name).toBe('Evo video');
+    expect(decodeWorld('garbage')).toBeNull(); expect(cleanSettings({ villages: 99, winter: -4 }).villages).toBe(6); expect(cleanSettings({ winter: -4 }).winter).toBe(0.5); expect(cleanSettings({}).villages).toBe(DEFAULT_SETTINGS.villages);
+    stepSim(a, 800); expect(a.settlers.every((s) => Number.isFinite(s.health))).toBe(true);
+  }, 30000);
+  it('every preset generates a living world', () => { for (const p of PRESETS) { const s = createSim(3, p.s); stepSim(s, 300); expect(s.settlers.length).toBeGreaterThan(5); } }, 30000);
+  it('the Chieftain sets doctrine and roles, orders buildings and festivals, and objectives/prosperity track the village', () => {
+    const sim = createSim(6); stepSim(sim, 400); const v = sim.villages[0]; chiefCmd(sim, { k: 'order', o: 'feast' }); expect(v.vstats.festivals).toBe(0); // not chief yet: ignored
+    chiefCmd(sim, { k: 'chief', v: 0 }); expect(sim.chief).toBe(0);
+    chiefCmd(sim, { k: 'doctrine', key: 'hunt', val: 0.99 }); expect(v.doctrine.hunt).toBe(0.99);
+    const s = sim.settlers.find((q) => q.v === 0 && q.age >= 15360)!; chiefCmd(sim, { k: 'role', sid: s.id, role: 'woodcutter' }); expect(s.role).toBe('woodcutter');
+    const other = sim.settlers.find((q) => q.v === 1)!; chiefCmd(sim, { k: 'role', sid: other.id, role: 'guard' }); expect(other.role).toBe(''); // cannot command other villages
+    v.stock.food = 100; v.stock.wood = 100; v.stock.stone = 50; chiefCmd(sim, { k: 'order', o: 'feast' }); expect(v.vstats.festivals).toBe(1); expect(v.stock.food).toBeLessThan(100); chiefCmd(sim, { k: 'order', o: 'feast' }); expect(v.vstats.festivals).toBe(1); // cooldown
+    const before = v.buildings.length; chiefCmd(sim, { k: 'order', o: 'build', type: 'hut' }); expect(v.buildings.length).toBe(before + 1); expect(sim.events.some((e) => e.k === 'chief')).toBe(true);
+    stepSim(sim, 600); expect(sim.settlers.filter((q) => q.role === 'woodcutter').every((q) => Number.isFinite(q.health))).toBe(true);
+    const pr = prosperity(sim, v), obj = objectives(sim, v); expect(pr).toBeGreaterThan(0); expect(pr).toBeLessThanOrEqual(100); expect(obj.length).toBeGreaterThan(5); expect(obj.every((o) => o.progress >= 0 && o.progress <= 1)).toBe(true);
+    chiefCmd(sim, { k: 'chief', v: -1 }); expect(sim.chief).toBe(-1);
+  }, 30000);
+});
+
+import { modCmd } from '../../src/hearth/sim';
+import { evaluate, generate, labTick, newLab, violations, describeSpec, mutate, type Spec } from '../../src/hearth/lab';
+import { mkSettler, newGenes } from '../../src/hearth/world';
+import { Rng } from '../../src/engine/rng';
+import { tierOf, type Doctrine } from '../../src/hearth/types';
+describe('v0.6b: mods, cities, alliances, emergencies, doctrine drift, Content Lab', () => {
+  it('adopted creatures, buildings and traits live in the world; removal cleans up; limits hold', () => {
+    const sim = createSim(9); const r = new Rng(1);
+    const cr = generate('creature', r), bl = generate('building', r), qk = generate('quirk', r);
+    for (const sp of [cr, bl, qk]) modCmd(sim, { k: 'mod', op: 'adopt', kind: sp.t, spec: sp.s } as never);
+    expect(sim.mods.creatures.length).toBe(1); expect(sim.fauna.some((a) => a.k === 'm:' + cr.s.id)).toBe(true); expect(sim.settlers.some((s) => s.quirks.includes(qk.s.id))).toBe(true);
+    stepSim(sim, 2400); expect(sim.settlers.every((s) => Number.isFinite(s.health))).toBe(true);
+    for (let i = 0; i < 6; i++) modCmd(sim, { k: 'mod', op: 'adopt', kind: 'quirk', spec: generate('quirk', r).s } as never); expect(sim.mods.quirks.length).toBe(4);
+    modCmd(sim, { k: 'mod', op: 'remove', kind: 'creature', id: cr.s.id }); modCmd(sim, { k: 'mod', op: 'remove', kind: 'quirk', id: qk.s.id });
+    expect(sim.fauna.some((a) => a.k === 'm:' + cr.s.id)).toBe(false); expect(sim.settlers.some((s) => s.quirks.includes(qk.s.id))).toBe(false);
+    const ser = deserialize(serialize(sim)); expect(ser.mods.quirks.length).toBe(3); stepSim(ser, 300);
+  }, 60000);
+  it('every building effect works without breaking the simulation', () => {
+    const sim = createSim(10), r = new Rng(3);
+    for (const eff of ['shelter', 'larder', 'infirmary', 'orchard', 'beacon', 'shrine'] as const) { const b = generate('building', r).s as never as { effect: string; id: string; power: number; wood: number; stone: number; name: string; glyph: string }; b.effect = eff; b.id = 'x' + eff; modCmd(sim, { k: 'mod', op: 'adopt', kind: 'building', spec: b } as never); if (sim.mods.buildings.length >= 5) break; }
+    for (const v of sim.villages) { v.stock.wood = 300; v.stock.stone = 100; v.stock.food = 100; } stepSim(sim, 4000);
+    expect(sim.villages.some((v) => v.buildings.some((b) => b.type.startsWith('m:')))).toBe(true); expect(sim.settlers.every((s) => Number.isFinite(s.health))).toBe(true);
+    for (const v of sim.villages) expect(v.stock.food).toBeGreaterThanOrEqual(0);
+  }, 60000);
+  it('villages can grow without a building cap (towns and cities exist)', () => {
+    const sim = createSim(6), v = sim.villages[0], rng = new Rng(4); expect(tierOf(8)).toBe('Hamlet'); expect(tierOf(30)).toBe('Town'); expect(tierOf(60)).toBe('City');
+    v.doctrine.expand = 0; for (let i = 0; i < 34; i++) sim.settlers.push(mkSettler(sim, rng, v.id, v.hx, v.hy, 15360 + 100 * i, newGenes(rng)));
+    v.stock.wood = 600; v.stock.stone = 200; v.stock.food = 400; stepSim(sim, 240 * 40);
+    expect(v.buildings.filter((b) => b.type === 'hut').length).toBeGreaterThan(5); expect(v.alive).toBe(true);
+  }, 90000);
+  it('good relations become alliances; the Chieftain can propose or betray', () => {
+    let sim = createSim(2), A = 0, B = 1; for (let seed = 1; seed < 12; seed++) { sim = createSim(seed); let best = 1e9; for (const x of sim.villages) for (const y of sim.villages) if (x.id < y.id) { const d = Math.abs(x.hx - y.hx) + Math.abs(x.hy - y.hy); if (d < best) { best = d; A = x.id; B = y.id; } } if (best <= 60) break; }
+    const k = `${A}-${B}`; for (let d = 0; d < 80 && !sim.alliances.includes(k); d++) { sim.rel[k] = 0.9; stepSim(sim, 240); }
+    expect(sim.alliances).toContain(k); expect(sim.events.some((e) => e.k === 'alliance')).toBe(true);
+    chiefCmd(sim, { k: 'chief', v: A }); sim.villages[A].raidCool = 0; chiefCmd(sim, { k: 'order', o: 'raid', to: B });
+    expect(sim.alliances).not.toContain(k); expect(sim.rel[k]).toBeLessThan(0.7);
+    const s2 = createSim(2); chiefCmd(s2, { k: 'chief', v: 0 }); s2.rel['0-2'] = 0.1; chiefCmd(s2, { k: 'order', o: 'ally', to: 2 }); expect(s2.alliances).toHaveLength(0);
+    s2.rel['0-2'] = 0.6; s2.villages[0].stock.food = 20; chiefCmd(s2, { k: 'order', o: 'ally', to: 2 }); expect(s2.alliances).toContain('0-2');
+  }, 90000);
+  it('starving settlers with empty stores drop everything and lead hungry neighbours to food', () => {
+    const sim = createSim(5); stepSim(sim, 60); const v = sim.villages[0], mem = sim.settlers.filter((s) => s.v === 0 && s.age >= 15360); v.stock.food = 0;
+    const lead = mem[0]; lead.genes.intellect = 1; lead.genes.sociability = 1; lead.hunger = 0.85; lead.carry.food = 0; lead.job = 'idle'; lead.cool = 0; lead.path = [];
+    for (const o of mem.slice(1, 5)) { o.hunger = 0.6; o.job = 'idle'; o.cool = 0; o.path = []; o.x = lead.x; o.y = lead.y; }
+    stepSim(sim, 6); expect(['forage', 'fish', 'hunt', 'eat', 'drink']).toContain(lead.job); expect(lead.thought.length).toBeGreaterThan(5);
+    expect(sim.settlers.every((s) => s.genes.intellect >= 0 && s.genes.intellect <= 1)).toBe(true);
+  });
+  it('doctrine drifts slowly towards the people’s skills, and not under a Chieftain', () => {
+    const sim = createSim(8), a = sim.villages[0], b = sim.villages[1]; for (const s of sim.settlers) if (s.v === 0 || s.v === 1) { s.genes.huntBias = 1; s.genes.courage = 1; } a.doctrine.hunt = 0; b.doctrine.hunt = 0; chiefCmd(sim, { k: 'chief', v: 1 });
+    stepSim(sim, 240 * 30); expect(a.doctrine.hunt).toBeGreaterThan(0.05); expect(a.doctrine.hunt).toBeLessThan(0.5); expect(b.doctrine.hunt).toBe(0);
+    const d: Doctrine = a.doctrine; for (const k of Object.keys(d) as (keyof Doctrine)[]) expect(d[k] >= 0 && d[k] <= 1).toBe(true);
+  }, 60000);
+  it('Content Lab: Instructor rejects bad ideas, Probes simulate, culls have reasons, ratings steer survival', () => {
+    const bad = generate('quirk', new Rng(2)); (bad.s as { plus: { stat: string }; minus: { stat: string } }).minus.stat = (bad.s as { plus: { stat: string } }).plus.stat; expect(violations(bad).length).toBeGreaterThan(0); expect(evaluate(bad, []).approved).toBe(false);
+    const cheap = generate('building', new Rng(3)); (cheap.s as { wood: number; stone: number; power: number }).wood = 4; (cheap.s as { stone: number }).stone = 0; (cheap.s as { power: number }).power = 3; expect(violations(cheap)).toContain('too cheap for its power');
+    for (let i = 0; i < 20; i++) for (const t of ['creature', 'building', 'quirk'] as const) { const sp = generate(t, new Rng(i)); expect(violations(sp)).toEqual([]); expect(violations(mutate(sp, new Rng(i + 99), 0.8)).length).toBeLessThanOrEqual(1); expect(describeSpec(sp).length).toBeGreaterThan(10); }
+    let lab = labTick(newLab(3), 'quirk'); expect(lab.library.length).toBeGreaterThanOrEqual(5); expect(lab.library.some((p) => p.info.approved)).toBe(true); expect(lab.tick).toBe(1); expect(lab.pops.quirk!.generation).toBe(1);
+    const top = lab.library.find((p) => p.info.approved)!; lab.library = lab.library.map((p) => (p.id === top.id ? { ...p, rating: 5 } : p)); lab = labTick(lab, 'quirk'); expect(lab.library.length).toBeGreaterThan(5); expect(lab.culls.every((c) => c.reason.length > 5)).toBe(true);
+    expect(JSON.parse(JSON.stringify(lab)).tick).toBe(2);
+  }, 120000);
+});

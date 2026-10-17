@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import type { Almanac, Cmd, Snapshot } from '../hearth/api';
-import type { DayStat, Evt } from '../hearth/types';
+import type { DayStat, Evt, WorldSettings } from '../hearth/types';
 import type { HIn, HOut } from '../workers/hearth.worker';
 import { idbAll, idbDelete, idbPut } from './idb';
 
 const OFFLINE_TICKS_PER_SEC = 1 / 3, MAX_OFFLINE = 7680, INDEX = 'hearth-index';
-export interface WorldMeta { id: string; name: string; created: number; savedAt: number; tick: number; pop: number }
+export interface WorldMeta { id: string; name: string; created: number; savedAt: number; tick: number; pop: number; seed?: number; settings?: Partial<WorldSettings> }
 type Mode = 'observe' | 'wanderer' | 'settler';
 interface HearthStore {
   snap: Snapshot | null; terrain: Uint8Array | null; stats: DayStat[]; events: Evt[]; speed: number; selected: { kind: 'settler' | 'village'; id: number } | null; follow: boolean; mode: Mode;
@@ -13,7 +13,7 @@ interface HearthStore {
   worlds: WorldMeta[]; currentId: string; menuOpen: boolean; resumeSpeed: number; toast: string | null;
   init: () => Promise<void>; setSpeed: (v: number) => void; cmd: (c: Cmd) => void; select: (s: HearthStore['selected']) => void; setFollow: (f: boolean) => void; setMode: (m: Mode) => void;
   playAs: (id: number) => void; dismissAlmanac: () => void; openMenu: (open: boolean) => void; saveNow: () => Promise<void>;
-  createWorld: (name?: string) => Promise<void>; switchWorld: (id: string) => Promise<void>; deleteWorld: (id: string) => Promise<void>; renameWorld: (id: string, name: string) => Promise<void>;
+  createWorld: (opts?: { name?: string; seed?: number; settings?: Partial<WorldSettings> }) => Promise<void>; switchWorld: (id: string) => Promise<void>; deleteWorld: (id: string) => Promise<void>; renameWorld: (id: string, name: string) => Promise<void>;
 }
 let worker: Worker | null = null, pendingSave: (() => void) | null = null, lastPop = 0;
 const send = (m: HIn) => worker?.postMessage(m);
@@ -22,7 +22,7 @@ const uid = () => Math.random().toString(36).slice(2, 8);
 
 export const useHearth = create<HearthStore>((set, get) => {
   const writeIndex = async () => { const { worlds, currentId } = get(); await idbPut({ id: INDEX, worlds, current: currentId } as { id: string }, 'world'); };
-  const start = (checkpoint?: string, offlineTicks = 0) => {
+  const start = (checkpoint?: string, offlineTicks = 0, seed = Math.floor(Math.random() * 1e6), settings?: Partial<WorldSettings>) => {
     worker?.terminate(); worker = new Worker(new URL('../workers/hearth.worker.ts', import.meta.url), { type: 'module' });
     set({ snap: null, terrain: null, stats: [], events: [], selected: null, bio: null, mode: 'observe', follow: false, error: null, almanac: null, catching: null });
     worker.onmessage = (e: MessageEvent<HOut>) => {
@@ -40,7 +40,7 @@ export const useHearth = create<HearthStore>((set, get) => {
       else if (m.type === 'error') set({ error: m.message });
     };
     worker.onerror = (e) => set({ error: e.message || 'Hearthworld worker crashed' });
-    send({ type: 'init', seed: Math.floor(Math.random() * 1e6), checkpoint });
+    send({ type: 'init', seed, settings, checkpoint });
     if (offlineTicks >= 240) { set({ catching: { done: 0, total: offlineTicks } }); send({ type: 'catchup', ticks: offlineTicks }); }
     send({ type: 'speed', v: get().speed });
   };
@@ -68,7 +68,7 @@ export const useHearth = create<HearthStore>((set, get) => {
     dismissAlmanac: () => set({ almanac: null }),
     openMenu: (open) => { const s = get(); if (open && !s.menuOpen) { set({ menuOpen: true, resumeSpeed: s.speed }); get().setSpeed(0); } else if (!open && s.menuOpen) { set({ menuOpen: false }); get().setSpeed(s.resumeSpeed || 1); } },
     saveNow: () => new Promise<void>((res) => { const t = setTimeout(res, 3000); pendingSave = () => { clearTimeout(t); res(); }; send({ type: 'save' }); }),
-    createWorld: async (name) => { await get().saveNow(); const id = uid(), n = name?.trim() || `Hearthworld ${get().worlds.length + 1}`; set({ worlds: [...get().worlds, { id, name: n, created: Date.now(), savedAt: Date.now(), tick: 0, pop: 0 }], currentId: id }); await writeIndex(); start(); },
+    createWorld: async (opts) => { await get().saveNow(); const id = uid(), seed = opts?.seed ?? Math.floor(Math.random() * 1e6), n = opts?.name?.trim() || opts?.settings?.name?.trim() || `Hearthworld ${get().worlds.length + 1}`; set({ worlds: [...get().worlds, { id, name: n, created: Date.now(), savedAt: Date.now(), tick: 0, pop: 0, seed, settings: opts?.settings }], currentId: id }); await writeIndex(); start(undefined, 0, seed, opts?.settings); },
     switchWorld: async (id) => { if (id === get().currentId) return; await get().saveNow(); set({ currentId: id }); await writeIndex(); await loadWorld(id); },
     deleteWorld: async (id) => { const { worlds, currentId } = get(); if (worlds.length <= 1) return; await idbDelete(rowId(id), 'world'); const left = worlds.filter((w) => w.id !== id); set({ worlds: left }); if (id === currentId) { set({ currentId: left[0].id }); await writeIndex(); await loadWorld(left[0].id); } else await writeIndex(); },
     renameWorld: async (id, name) => { set({ worlds: get().worlds.map((w) => (w.id === id ? { ...w, name: name.trim() || w.name } : w)) }); await writeIndex(); },

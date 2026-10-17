@@ -1,9 +1,9 @@
 import { createSim, deserialize, serialize } from '../hearth/world';
 import { stepSim } from '../hearth/sim';
 import { command, snapshot, summarize, type Almanac, type Cmd, type Snapshot } from '../hearth/api';
-import type { Evt, Sim } from '../hearth/types';
+import type { Evt, Sim, WorldSettings } from '../hearth/types';
 
-export type HIn = { type: 'init'; seed: number; checkpoint?: string } | { type: 'speed'; v: number } | { type: 'cmd'; cmd: Cmd } | { type: 'catchup'; ticks: number } | { type: 'inspect'; id: number } | { type: 'save' };
+export type HIn = { type: 'init'; seed: number; settings?: Partial<WorldSettings>; checkpoint?: string } | { type: 'speed'; v: number } | { type: 'cmd'; cmd: Cmd } | { type: 'catchup'; ticks: number } | { type: 'inspect'; id: number } | { type: 'save' };
 export type HOut = { type: 'snap'; snap: Snapshot; terrain?: Uint8Array } | { type: 'checkpoint'; data: string; tick: number; pop: number } | { type: 'catchup'; done: number; total: number; almanac?: Almanac } | { type: 'bio'; id: number; bio: string[] } | { type: 'error'; message: string };
 const ctx = self as unknown as { postMessage(m: HOut, t?: Transferable[]): void; onmessage: ((e: MessageEvent<HIn>) => void) | null };
 let sim: Sim | null = null, speed = 0, acc = 0, lastEvt: Evt | null = null, lastStats = 0, frame = 0, lastSave = 0, timer: ReturnType<typeof setInterval> | null = null;
@@ -22,7 +22,7 @@ function loop() {
 ctx.onmessage = (e) => {
   const m = e.data;
   try {
-    if (m.type === 'init') { sim = m.checkpoint ? deserialize(m.checkpoint) : createSim(m.seed); lastEvt = null; lastStats = 0; lastSave = sim.tick; if (!timer) timer = setInterval(loop, 50); post(true); }
+    if (m.type === 'init') { sim = m.checkpoint ? deserialize(m.checkpoint) : createSim(m.seed, m.settings); lastEvt = null; lastStats = 0; lastSave = sim.tick; if (!timer) timer = setInterval(loop, 50); post(true); }
     else if (!sim) return;
     else if (m.type === 'speed') { speed = m.v; if (!speed) { save(); post(); } }
     else if (m.type === 'cmd') { command(sim, m.cmd); post(); }

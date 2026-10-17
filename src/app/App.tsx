@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import { MotionConfig, motion } from 'framer-motion';
-import { Globe2, Dna, Swords, Wrench, Menu, Settings as Cog, X, type LucideIcon } from 'lucide-react';
+import { FlaskConical, Globe2, Dna, Swords, Wrench, Menu, Settings as Cog, X, type LucideIcon } from 'lucide-react';
 import { PAGES, type PageId } from './hooks';
 import { installVisibilityHandler, useStore } from './store';
 import { useHearth } from './hearthStore';
@@ -11,13 +11,14 @@ import { World } from '../pages/World';
 import { GameMenu } from '../components/GameMenu';
 import { Evolution } from '../pages/Evolution';
 import { Delve } from '../pages/Delve';
+import { ContentLab } from '../pages/ContentLab';
 import { Workshop } from '../pages/Workshop';
 import { Settings } from '../pages/Settings';
 import { Onboarding } from '../pages/Onboarding';
 import { cx } from '../components/ui';
 
 const NAV: Record<PageId, { label: string; icon: LucideIcon }> = {
-  world: { label: 'World', icon: Globe2 }, evolution: { label: 'Evolution', icon: Dna }, delve: { label: 'Delve', icon: Swords },
+  world: { label: 'World', icon: Globe2 }, evolution: { label: 'Evolution', icon: Dna }, lab: { label: 'Content Lab', icon: FlaskConical }, delve: { label: 'Delve', icon: Swords },
   workshop: { label: 'Workshop', icon: Wrench }, settings: { label: 'Settings', icon: Cog },
 };
 const parse = (): PageId => { const h = location.hash.replace(/^#\/?/, '') as PageId; return PAGES.includes(h) ? h : 'world'; };
@@ -57,6 +58,7 @@ export function App() {
           <Boundary key={page}><motion.div key={page} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             {page === 'world' && <World go={(p) => go(p as PageId)} />}
             {page === 'evolution' && <Evolution />}
+            {page === 'lab' && <ContentLab go={(p) => go(p as PageId)} />}
             {page === 'delve' && <Delve />}
             {page === 'workshop' && <Workshop openCreate={create} />}
             {page === 'settings' && <Settings />}
