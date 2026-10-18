@@ -1,104 +1,66 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Menu as MenuIcon, Minus, Pause, Plus, Sparkles } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { CAUSES, DAY, YEAR } from '../hearth/types';
 import { useHearth } from '../app/hearthStore';
-import { HearthCanvas, camRef, centerOn, clampCam, zoomAt } from '../components/HearthCanvas';
-import { Legend } from '../components/Legend';
+import { useUi, type PanelId } from '../app/uiStore';
+import { HearthCanvas, camRef, clampCam, zoomAt } from '../components/HearthCanvas';
+import { LegendBody } from '../components/Legend';
 import { Minimap } from '../components/Minimap';
 import { ChiefPanel } from '../components/ChiefPanel';
-import { GENES, YEAR, DAY, CAUSES, BUILDINGS, TECHS, type BaseBType } from '../hearth/types';
+import { DiplomacyPanel, EventsPanel, InventionsPanel, PeoplePanel, VillagePanel } from '../components/world/Panels';
+import { Drawer, HudBar, InspectorCard, PANELS, Rail } from '../components/world/Chrome';
+import { computeAdvice } from '../components/world/advisor';
+import { SPEEDS, Bar } from '../components/world/shared';
 import { Btn, Card, SectionTitle, cx } from '../components/ui';
 
-const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'], SPEEDS = [0, 1, 2, 8, 32];
-const GENE_HELP: Record<string, string> = { thrift: 'Hoards for later', courage: 'Fights wolves, bears and raiders; hunts boldly', sociability: 'Stays with others, breeds more, catches fever more', curiosity: 'Searches farther away, invents more', industry: 'Works harder, eats more', hardiness: 'Needs less food and warmth, works slower', huntBias: 'Prefers hunting over foraging', foresight: 'Spares resources, replants forests, avoids overhunting' };
-const EV_COL: Record<string, string> = { death: 'text-bad', birth: 'text-ok', build: 'text-acc', plan: 'text-slate-500', village: 'text-amb', wolf: 'text-vio', fever: 'text-lime-400', season: 'text-sky-300', wanderer: 'text-white', you: 'text-white', trade: 'text-amber-300', war: 'text-red-400', invent: 'text-cyan-300', hunt: 'text-orange-300', craft: 'text-slate-300' };
-const JOB: Record<string, string> = { idle: 'idle', drink: 'drinking', eat: 'eating', forage: 'foraging', hunt: 'hunting', farm: 'farming', wood: 'logging', stone: 'quarrying', build: 'building', deposit: 'hauling', warm: 'warming up', flee: 'fleeing', fight: 'fighting', craft: 'crafting', trade: 'trading', raid: 'raiding', defend: 'defending', fish: 'fishing', plant: 'planting trees' };
-const relWord = (r: number) => (r >= 0.3 ? ['allied', 'text-ok'] : r >= 0.1 ? ['friendly', 'text-ok'] : r > -0.2 ? ['neutral', 'text-slate-400'] : r > -0.5 ? ['tense', 'text-amber-300'] : ['hostile', 'text-bad']) as [string, string];
-const Bar = ({ label, v, color, hint }: { label: string; v: number; color: string; hint?: string }) => (<div title={hint} className="grid grid-cols-[84px_1fr_34px] items-center gap-2 text-[11px]"><span className="text-slate-500">{label}</span><div className="h-1.5 rounded-full bg-white/5"><div className="h-full rounded-full" style={{ width: `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`, background: color }} /></div><span className="mono text-slate-500">{Math.round(v * 100)}</span></div>);
+const PANEL_KEYS: Record<string, PanelId> = { v: 'village', c: 'chief', o: 'people', b: 'diplomacy', i: 'inventions', e: 'events', l: 'codex' };
 
 export function World({ go = () => {} }: { go?: (p: string) => void }) {
-  const { snap, speed, setSpeed, selected, select, follow, setFollow, mode, setMode, playAs, cmd, bio, almanac, dismissAlmanac, catching, events, error, openMenu, menuOpen, toast } = useHearth();
-  const [tab, setTab] = useState<'inspect' | 'chief' | 'people' | 'villages' | 'events'>('inspect'), [filter, setFilter] = useState(-1), last = useRef(0);
+  void go;
+  const { snap, mode, setMode, cmd, almanac, dismissAlmanac, catching, error, openMenu, toast } = useHearth(), { panel, toggle } = useUi(), last = useRef(0);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return; const k = e.key.toLowerCase(), st = useHearth.getState();
-      if (k === 'escape') { e.preventDefault(); st.openMenu(!st.menuOpen); return; } if (st.menuOpen) return;
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return; const k = e.key.toLowerCase(), st = useHearth.getState(), ui = useUi.getState();
+      if (k === 'escape') { e.preventDefault(); if (ui.panel) ui.setPanel(null); else if (st.selected) st.select(null); else st.openMenu(!st.menuOpen); return; } if (st.menuOpen) return;
       const dirs: Record<string, [number, number]> = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] }, d = dirs[k], now = performance.now();
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault(); // no page scrolling while playing
       if (k === '+' || k === '=') { zoomAt(1.15); return; } if (k === '-') { zoomAt(1 / 1.15); return; } if (k === 'p') { st.setSpeed(st.speed ? 0 : 1); return; }
       if (/^[1-5]$/.test(k)) { st.setSpeed(SPEEDS[Number(k) - 1]); return; }
-      if (st.mode === 'observe') { if (d) { camRef.cx += (d[0] * 14) / camRef.zoom; camRef.cy += (d[1] * 14) / camRef.zoom; clampCam(); st.setFollow(false); } else if (k === ' ') st.setSpeed(st.speed ? 0 : 1); return; }
+      if (st.mode === 'observe') { if (PANEL_KEYS[k]) { ui.toggle(PANEL_KEYS[k]); return; } if (d) { camRef.cx += (d[0] * 14) / camRef.zoom; camRef.cy += (d[1] * 14) / camRef.zoom; clampCam(); st.setFollow(false); } else if (k === ' ') st.setSpeed(st.speed ? 0 : 1); return; }
       if (st.mode === 'wanderer') { if (d) { if (now - last.current > 70) { last.current = now; st.cmd({ k: 'wmove', dx: d[0], dy: d[1] }); } } else if (k === 'e') st.cmd({ k: 'wgather' }); else if (k === 'f') st.cmd({ k: 'wgive' }); else if (k === 'g') st.cmd({ k: 'wdeposit' }); return; }
       if (d) { if (now - last.current > 90) { last.current = now; st.cmd({ k: 'smove', dx: d[0], dy: d[1] }); } } else if (k === 'e') st.cmd({ k: 'sact' }); else if (k === ' ' || k === 'q') st.cmd({ k: 'sfight' }); else if (k === 'g') st.cmd({ k: 'sdeposit' }); else if (k === 'f') st.cmd({ k: 'sgive' }); else if (k === 'r') st.setMode('observe');
     };
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, []);
-  const time = useMemo(() => { if (!snap) return null; const t = snap.tick; return { year: Math.floor(t / YEAR) + 1, season: SEASONS[Math.floor((t % YEAR) / (DAY * 8))], day: Math.floor((t % (DAY * 8)) / DAY) + 1, hour: Math.floor(((t % DAY) / DAY) * 24) }; }, [snap?.tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sel = snap && selected?.kind === 'settler' ? snap.settlers.find((s) => s.id === selected.id) : null, vil = snap && selected?.kind === 'village' ? snap.villages.find((v) => v.id === selected.id) : null;
-  const me = snap?.settlers.find((s) => s.ctl) ?? null, total = snap?.settlers.length ?? 0, vname = (id: number) => snap?.villages[id]?.name ?? '?';
-  const btn = (label: React.ReactNode, onClick: () => void, cls = '') => <Btn className={cx('!px-0 !py-3 text-sm', cls)} onClick={onClick}>{label}</Btn>;
+  const me = snap?.settlers.find((s) => s.ctl) ?? null, vname = (id: number) => snap?.villages[id]?.name ?? '?', btn = (label: React.ReactNode, onClick: () => void, cls = '') => <Btn className={cx('!px-0 !py-3 text-sm', cls)} onClick={onClick}>{label}</Btn>;
+  const alert = !!snap && computeAdvice(snap).some((a) => a.level === 'alert');
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><div className="mono text-xs uppercase tracking-[0.3em] text-acc">Hearthworld</div><h1 className="text-2xl font-semibold">Tribes that trade, quarrel and invent</h1></div>
-        <div className="flex flex-wrap items-center gap-2">{SPEEDS.map((v) => <Btn key={v} variant={speed === v ? 'primary' : 'ghost'} className="!px-3 !py-1.5 text-xs" onClick={() => setSpeed(v)}>{v === 0 ? <Pause size={14} /> : `${v}×`}</Btn>)}
-          <Btn className="!px-2 !py-1.5" title="Zoom out" onClick={() => zoomAt(1 / 1.2)}><Minus size={14} /></Btn><Btn className="!px-2 !py-1.5" title="Zoom in" onClick={() => zoomAt(1.2)}><Plus size={14} /></Btn><Btn className="!py-1.5 text-xs" onClick={() => openMenu(true)}><MenuIcon size={14} />Menu</Btn></div>
-      </div>
-      {error && <p className="rounded-lg border border-bad/40 bg-bad/5 px-3 py-2 text-xs text-bad">Simulation error: {error}</p>}
-      {toast && <p className="rounded-lg border border-amb/40 bg-amb/5 px-3 py-2 text-xs text-amb">{toast}</p>}
-      {catching && <div className="rounded-lg border border-acc/30 bg-acc/5 px-3 py-2 text-xs text-acc"><span className="pulse-dot">●</span> While you were away the world kept living: simulating {Math.round(catching.done / DAY)} / {Math.round(catching.total / DAY)} days…</div>}
-      {almanac && (<Card className="border-acc/30"><SectionTitle right={<Btn className="!py-1 text-xs" onClick={dismissAlmanac}>Close</Btn>}>Almanac: while you were away ({(almanac.ticks / YEAR).toFixed(1)} years)</SectionTitle>
-        <p className="text-sm text-slate-300">Population {almanac.popBefore} → {almanac.popAfter}. {almanac.births} born, {Object.values(almanac.deaths).reduce((a, b) => a + b, 0)} died ({CAUSES.filter((c) => almanac.deaths[c] > 0).map((c) => `${almanac.deaths[c]} ${c}`).join(', ') || 'none'}). {almanac.founded} village(s) founded, {almanac.fell} fell, {almanac.builds} buildings finished{almanac.trades ? `, ${almanac.trades} trades, ${almanac.raids} raids, ${almanac.inventions} inventions` : ''}.</p>
-        <p className="mt-1 text-[11px] text-slate-600">Computed on your device when you returned (1 simulated tick per 3 real seconds away, at most one year). No server is running the world yet.</p></Card>)}
-      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
-        <div className="space-y-3">
-          <div className="relative overflow-hidden rounded-xl" style={{ overscrollBehavior: 'contain' }}>
-            <HearthCanvas onPick={(k, id) => { select(k ? { kind: k, id } : null); if (k) setTab('inspect'); }} />
-            {time && snap && <div className="mono pointer-events-none absolute left-3 top-3 rounded-lg bg-ink-950/80 px-3 py-2 text-xs"><div className="text-slate-200">Year {time.year} · {time.season} · day {time.day} · {String(time.hour).padStart(2, '0')}:00</div><div className="text-slate-500">{total} settlers · {snap.villages.filter((v) => v.alive).length} villages · {snap.wolves.length} wolves · {snap.deer.length + snap.fauna.length} animals</div></div>}
-            {speed === 0 && <div className="pointer-events-none absolute right-3 top-3 rounded-lg bg-ink-950/80 px-3 py-1 text-xs text-amb">paused</div>}
-            <Legend mode={mode} />
-            {mode === 'settler' && me && (<div className="absolute bottom-3 right-3 w-[210px] rounded-xl border border-white/10 bg-ink-950/90 p-3 text-xs backdrop-blur">
-              <div className="mb-1 flex items-center justify-between"><span className="font-semibold text-white">{me.name}</span><span className="mono text-slate-500">{vname(me.v)}</span></div>
-              <div className="space-y-1"><Bar label="Health" v={me.health} color="#34d399" /><Bar label="Hunger" v={me.hunger} color="#f5b84b" /><Bar label="Thirst" v={me.thirst} color="#22d3ee" /><Bar label="Cold" v={me.cold} color="#93c5fd" /></div>
-              <div className="mono mt-1 text-[10px] text-slate-500">carry {me.carry.food}f {me.carry.wood}w {me.carry.stone}s{me.carry.tools ? ` ${me.carry.tools}t` : ''}</div>
-              <div className="mt-2 grid grid-cols-3 gap-1">{btn('↑', () => cmd({ k: 'smove', dx: 0, dy: -1 }))}{btn('E', () => cmd({ k: 'sact' }), 'border-acc/40')}{btn('⚔', () => cmd({ k: 'sfight' }))}{btn('←', () => cmd({ k: 'smove', dx: -1, dy: 0 }))}{btn('↓', () => cmd({ k: 'smove', dx: 0, dy: 1 }))}{btn('→', () => cmd({ k: 'smove', dx: 1, dy: 0 }))}{btn('G', () => cmd({ k: 'sdeposit' }))}{btn('F', () => cmd({ k: 'sgive' }))}{btn('R', () => setMode('observe'))}</div>
-              <p className="mt-1 text-[10px] text-slate-600">E interact · ⚔ fight · G deposit · F give · R release</p></div>)}
-          </div>
-          <Card className="p-4"><div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2"><Btn variant={mode === 'observe' ? 'primary' : 'ghost'} className="!py-1.5 text-xs" onClick={() => setMode('observe')}>Observe</Btn><Btn variant={mode === 'wanderer' ? 'primary' : 'ghost'} className="!py-1.5 text-xs" onClick={() => setMode('wanderer')}>Wanderer</Btn>
-              <Btn variant={mode === 'settler' ? 'primary' : 'ghost'} className="!py-1.5 text-xs" disabled={!sel || sel.age < 2 * YEAR} onClick={() => sel && playAs(sel.id)}>{sel && sel.age >= 2 * YEAR ? `Play as ${sel.name}` : 'Play as a settler (select an adult)'}</Btn>
-              <Btn className="!py-1.5 text-xs" disabled={!sel} onClick={() => setFollow(!follow)}>{follow ? 'Unfollow' : 'Follow'}</Btn></div>
-            <p className="max-w-md text-xs text-slate-500">{mode === 'settler' ? 'You are a settler: your needs still run. Keep yourself alive, serve the village, or wage its wars.' : mode === 'wanderer' ? <>WASD move · <b>E</b> gather · <b>F</b> feed/warm · <b>G</b> leave supplies. Carrying {snap?.wanderer.carry.food ?? 0} food, {snap?.wanderer.carry.wood ?? 0} wood, {snap?.wanderer.carry.stone ?? 0} stone.</> : 'Drag or arrows to pan, wheel to zoom, click a settler or hearth. Open the Legend (bottom-left) for symbols, buildings and controls.'}</p></div></Card>
-        </div>
-        <div className="space-y-3">
-          <Minimap />
-          <div className="flex gap-1.5">{(['inspect', 'chief', 'people', 'villages', 'events'] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={cx('flex-1 rounded-lg border px-1 py-1.5 text-[11px] capitalize', tab === t ? 'border-acc/60 bg-acc/10 text-acc' : 'border-white/10 text-slate-400')}>{t === 'chief' ? 'chieftain' : t}</button>)}</div>
-          {tab === 'inspect' && (<Card>{!sel && !vil ? <p className="text-sm text-slate-500">Click a settler (a coloured dot) to see what it is doing and why, its genes and life story, or a village hearth for doctrine, stores, inventions and relations.</p> : sel ? (<div className="space-y-2">
-            <div className="flex items-baseline justify-between"><span className="text-lg font-semibold">{sel.name}</span><span className="mono text-xs text-slate-500">{vname(sel.v)} · {(sel.age / YEAR).toFixed(1)} y{sel.age < 2 * YEAR ? ' · child' : ''}</span></div>
-            <div className="mono text-[11px] text-slate-500">{JOB[sel.job] ?? sel.job}{sel.armed ? ' · armed' : ''}{sel.party ? ' · in a hunting party' : ''}{sel.ctl ? ' · you' : ''}</div>
-            <p className="rounded-lg bg-white/[0.03] p-2 text-xs text-slate-300"><Sparkles size={12} className="mr-1 inline text-acc" />{sel.thought}</p>
-            <div className="space-y-1"><Bar label="Health" v={sel.health} color="#34d399" /><Bar label="Hunger" v={sel.hunger} color="#f5b84b" /><Bar label="Thirst" v={sel.thirst} color="#22d3ee" /><Bar label="Cold" v={sel.cold} color="#93c5fd" /></div>
-            {sel.quirks.length > 0 && <div className="text-[11px] text-vio">Traits: {sel.quirks.map((q) => snap!.mods.quirks.find((m) => m.id === q)?.name ?? q).join(', ')}</div>}
-            <div className="mono text-[11px] text-slate-500">carrying {sel.carry.food} food · {sel.carry.wood} wood · {sel.carry.stone} stone{sel.carry.tools ? ` · ${sel.carry.tools} tools` : ''} · {sel.kids} children{sel.sick ? ' · feverish' : ''}</div>
-            <div className="pt-1 text-[11px] uppercase tracking-widest text-slate-500">Genes (inherited, mutate)</div><div className="space-y-1">{GENES.map((g) => <Bar key={g} label={g} v={sel.genes[g]} color="#8b5cf6" hint={GENE_HELP[g]} />)}</div>
-            {sel.parents[0] >= 0 && <p className="text-[11px] text-slate-500">Parents: {snap!.settlers.find((p) => p.id === sel.parents[0])?.name ?? `#${sel.parents[0]} (gone)`} & {snap!.settlers.find((p) => p.id === sel.parents[1])?.name ?? `#${sel.parents[1]} (gone)`}</p>}
-            {bio && bio.id === sel.id && <div className="max-h-40 space-y-1 overflow-auto border-t border-white/5 pt-2 text-[11px] text-slate-400">{bio.lines.map((l, i) => <div key={i}>{l}</div>)}</div>}</div>)
-            : vil && (<div className="space-y-2"><div className="flex items-baseline justify-between"><span className="text-lg font-semibold" style={{ color: vil.color }}>{vil.name}</span><span className="mono text-xs text-slate-500">{vil.alive ? `${vil.tier} · ${vil.pop} people` : 'ruins'}</span></div>
-              {vil.alive && <Btn className="!py-1 text-xs" onClick={() => { cmd({ k: 'chief', v: vil.id }); setTab('chief'); }}>{snap!.chief === vil.id ? 'You lead this village' : 'Lead this village (Chieftain)'}</Btn>}
-              <div className="mono text-xs text-slate-400">stock: {vil.stock.food} food · {vil.stock.wood} wood · {vil.stock.stone} stone{vil.stock.tools ? ` · ${vil.stock.tools} tools` : ''}{vil.stock.spears ? ` · ${vil.stock.spears} spears` : ''}{vil.fire ? ' · hearth burning' : ''}</div>
-              <div className="pt-1 text-[11px] uppercase tracking-widest text-slate-500">Nearby resources (14 tiles)</div><Bar label="Forest" v={vil.outlook.wood} color="#34d399" hint="Share of wood still standing" /><Bar label="Berries" v={vil.outlook.berry} color="#e0526a" /><Bar label="Fish" v={vil.outlook.fish} color="#67e8f9" /><Bar label="Game" v={vil.outlook.game} color="#c9a66b" /><Bar label="Stone" v={vil.outlook.stone} color="#94a3b8" hint="Stone is finite" />
-              <div className="pt-1 text-[11px] uppercase tracking-widest text-slate-500">Doctrine</div>{(Object.keys(vil.doctrine) as (keyof typeof vil.doctrine)[]).map((k) => <Bar key={k} label={k} v={vil.doctrine[k]} color={vil.color} />)}
-              <div className="pt-1 text-[11px] uppercase tracking-widest text-slate-500">Inventions ({vil.techs.length}/{Object.keys(TECHS).length})</div><div className="flex flex-wrap gap-1">{vil.techs.length ? vil.techs.map((t) => <span key={t} title={TECHS[t].desc} className="rounded-full border border-amb/30 px-2 py-0.5 text-[10px] text-amb">{TECHS[t].name}</span>) : <span className="text-[11px] text-slate-600">none yet</span>}</div>
-              <div className="pt-1 text-[11px] uppercase tracking-widest text-slate-500">Buildings</div><div className="space-y-0.5 text-[11px] text-slate-400">{(Object.keys(BUILDINGS) as BaseBType[]).filter((t) => vil.buildings.some((b) => b.type === t)).map((t) => <div key={t} title={BUILDINGS[t].desc}>{vil.buildings.filter((b) => b.type === t && b.built).length}× {BUILDINGS[t].name}{vil.buildings.some((b) => b.type === t && !b.built) ? ' (+1 under construction)' : ''}</div>)}</div>
-              <div className="pt-1 text-[11px] uppercase tracking-widest text-slate-500">Relations</div><div className="space-y-0.5 text-[11px]">{snap!.rel.filter((r) => r[0] === vil.id || r[1] === vil.id).map((r) => { const o = r[0] === vil.id ? r[1] : r[0], [w, c] = relWord(r[2]); return <div key={o} className="flex justify-between"><span style={{ color: snap!.villages[o].color }}>{snap!.villages[o].name}</span><span className={c}>{snap!.alliances.includes(`${r[0]}-${r[1]}`) ? 'ALLIED' : w} ({Math.round(r[2] * 100)})</span></div>; })}</div>
-              <div className="mono text-[11px] text-slate-500">{vil.births} born · {vil.deaths} died · peak {vil.peak}{vil.parent >= 0 ? ` · split from ${vname(vil.parent)}` : ''}</div></div>)}</Card>)}
-          {tab === 'chief' && snap && <ChiefPanel snap={snap} />}
-          {tab === 'people' && <Card><div className="mb-2"><select className="w-full rounded-lg border border-white/10 bg-ink-900 px-2 py-1 text-xs" value={filter} onChange={(e) => setFilter(Number(e.target.value))}><option value={-1}>All villages</option>{snap?.villages.filter((v) => v.alive).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
-            <div className="max-h-[420px] space-y-0.5 overflow-auto">{snap?.settlers.filter((s) => filter < 0 || s.v === filter).sort((a, b) => a.v - b.v || a.name.localeCompare(b.name)).map((s) => <button key={s.id} onClick={() => { select({ kind: 'settler', id: s.id }); centerOn(s.x, s.y); setTab('inspect'); }} className="flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left text-xs hover:bg-white/5"><span className="flex items-center gap-2"><span className="inline-block h-2 w-2 rounded-full" style={{ background: snap.villages[s.v]?.color }} />{s.name}{s.ctl ? ' (you)' : ''}</span><span className="mono text-[10px] text-slate-500">{(s.age / YEAR).toFixed(0)}y · {JOB[s.job]}{s.health < 0.5 ? ' · hurt' : ''}</span></button>)}</div></Card>}
-          {tab === 'villages' && <Card className="space-y-3">{snap?.villages.map((v) => <button key={v.id} onClick={() => { select({ kind: 'village', id: v.id }); centerOn(v.hx, v.hy); setTab('inspect'); }} className="block w-full text-left"><div className="flex items-baseline justify-between"><span style={{ color: v.color }} className="text-sm font-semibold">{v.name}</span><span className="mono text-[11px] text-slate-500">{v.alive ? `${v.pop} people · ${v.techs.length} inventions` : 'fallen'}</span></div>
-            <div className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-white/5">{(Object.keys(v.doctrine) as (keyof typeof v.doctrine)[]).map((k, i) => <div key={k} title={`${k} ${Math.round(v.doctrine[k] * 100)}`} style={{ width: `${v.doctrine[k] * 20}%`, background: v.color, opacity: 0.35 + i * 0.15 }} />)}</div><div className="mono mt-0.5 text-[10px] text-slate-600">hunt · farm · build · stock · defend</div></button>)}</Card>}
-          {tab === 'events' && <Card><div className="max-h-[520px] space-y-1.5 overflow-auto">{[...events].reverse().slice(0, 100).map((e, i) => <button key={i} onClick={() => { if (e.x !== undefined && e.y !== undefined) centerOn(e.x, e.y); if (e.sid) select({ kind: 'settler', id: e.sid }); }} className={cx('block w-full text-left text-xs', EV_COL[e.k] ?? 'text-slate-400')}><span className="mono mr-1 text-slate-600">Y{(e.t / YEAR).toFixed(1)}</span>{e.text}</button>)}{!events.length && <p className="text-sm text-slate-500">Waiting for the first events…</p>}</div></Card>}
-        </div>
-      </div>
+    <div className="relative h-[calc(100dvh-5rem)] min-h-[520px] overflow-hidden rounded-xl border border-white/10 bg-ink-950 md:h-[calc(100dvh-1.5rem)]" style={{ overscrollBehavior: 'contain' }}>
+      <HearthCanvas onPick={(k, id) => { useHearth.getState().select(k ? { kind: k, id } : null); }} />
+      {snap && <HudBar snap={snap} onMenu={() => openMenu(true)} />}
+      <Rail alert={alert} />
+      {panel && snap && (<Drawer title={PANELS.find((p) => p.id === panel)!.label}>
+        {panel === 'village' && <VillagePanel snap={snap} />}{panel === 'chief' && <ChiefPanel snap={snap} />}{panel === 'people' && <PeoplePanel snap={snap} />}{panel === 'diplomacy' && <DiplomacyPanel snap={snap} />}{panel === 'inventions' && <InventionsPanel snap={snap} />}{panel === 'events' && <EventsPanel />}{panel === 'codex' && <LegendBody mode={mode} />}
+      </Drawer>)}
+      {snap && <InspectorCard snap={snap} />}
+      <div className="absolute bottom-3 right-3 z-10 hidden w-36 sm:block"><Minimap /></div>
+      {mode === 'settler' && me && snap && (<div className="absolute bottom-3 right-3 z-20 w-[210px] rounded-xl border border-white/10 bg-ink-950/92 p-3 text-xs backdrop-blur sm:bottom-44">
+        <div className="mb-1 flex items-center justify-between"><span className="font-semibold text-white">{me.name}</span><span className="mono text-slate-500">{vname(me.v)}</span></div>
+        <div className="space-y-1"><Bar label="Health" v={me.health} color="#34d399" /><Bar label="Hunger" v={me.hunger} color="#f5b84b" /><Bar label="Thirst" v={me.thirst} color="#22d3ee" /><Bar label="Cold" v={me.cold} color="#93c5fd" /></div>
+        <div className="mono mt-1 text-[10px] text-slate-500">carry {me.carry.food}f {me.carry.wood}w {me.carry.stone}s{me.carry.tools ? ` ${me.carry.tools}t` : ''}</div>
+        <div className="mt-2 grid grid-cols-3 gap-1">{btn('↑', () => cmd({ k: 'smove', dx: 0, dy: -1 }))}{btn('E', () => cmd({ k: 'sact' }), 'border-acc/40')}{btn('⚔', () => cmd({ k: 'sfight' }))}{btn('←', () => cmd({ k: 'smove', dx: -1, dy: 0 }))}{btn('↓', () => cmd({ k: 'smove', dx: 0, dy: 1 }))}{btn('→', () => cmd({ k: 'smove', dx: 1, dy: 0 }))}{btn('G', () => cmd({ k: 'sdeposit' }))}{btn('F', () => cmd({ k: 'sgive' }))}{btn('R', () => setMode('observe'))}</div>
+        <p className="mt-1 text-[10px] text-slate-600">E interact · ⚔ fight · G deposit · F give · R release</p></div>)}
+      <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-white/10 bg-ink-950/85 px-2 py-1.5 backdrop-blur">
+        {(['observe', 'wanderer'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={cx('rounded-lg px-2.5 py-1 text-[11px] capitalize', mode === m ? 'bg-acc text-ink-950' : 'text-slate-400 hover:bg-white/5')}>{m}</button>)}
+        <span className={cx('rounded-lg px-2.5 py-1 text-[11px]', mode === 'settler' ? 'bg-acc text-ink-950' : 'text-slate-600')} title="Select an adult settler, then press “Play as”">settler</span>
+        <span className="hidden max-w-[230px] truncate pl-1 text-[10px] text-slate-500 md:inline">{mode === 'observe' ? 'drag/WASD pan · wheel zoom · click to inspect' : mode === 'wanderer' ? 'WASD move · E gather · F feed · G deposit' : 'WASD walk · E interact · Space fight · R release'}</span></div>
+      <div className="absolute bottom-14 left-1/2 z-20 w-[min(560px,92%)] -translate-x-1/2 space-y-2">
+        {error && <p className="rounded-lg border border-bad/40 bg-ink-950/95 px-3 py-2 text-xs text-bad">Simulation error: {error}</p>}
+        {toast && <p className="rounded-lg border border-amb/40 bg-ink-950/95 px-3 py-2 text-xs text-amb">{toast}</p>}
+        {catching && <div className="rounded-lg border border-acc/30 bg-ink-950/95 px-3 py-2 text-xs text-acc"><span className="pulse-dot">●</span> While you were away the world kept living: simulating {Math.round(catching.done / DAY)} / {Math.round(catching.total / DAY)} days…</div>}
+        {almanac && (<Card className="border-acc/30 bg-ink-950/95"><SectionTitle right={<Btn className="!py-1 text-xs" onClick={dismissAlmanac}>Close</Btn>}>Almanac: while you were away ({(almanac.ticks / YEAR).toFixed(1)} years)</SectionTitle>
+          <p className="text-sm text-slate-300">Population {almanac.popBefore} → {almanac.popAfter}. {almanac.births} born, {Object.values(almanac.deaths).reduce((a, b) => a + b, 0)} died ({CAUSES.filter((c) => almanac.deaths[c] > 0).map((c) => `${almanac.deaths[c]} ${c}`).join(', ') || 'none'}). {almanac.founded} village(s) founded, {almanac.fell} fell, {almanac.builds} buildings finished{almanac.trades ? `, ${almanac.trades} trades, ${almanac.raids} raids, ${almanac.inventions} inventions` : ''}.</p>
+          <p className="mt-1 text-[11px] text-slate-600">Computed on your device when you returned (1 simulated tick per 3 real seconds away, at most one year). No server is running the world yet.</p></Card>)}</div>
+      {!snap && <div className="absolute inset-0 grid place-items-center text-sm text-slate-500">Waking the world…</div>}
     </div>
   );
 }

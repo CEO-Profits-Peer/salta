@@ -180,3 +180,25 @@ describe('v0.6b: mods, cities, alliances, emergencies, doctrine drift, Content L
     expect(JSON.parse(JSON.stringify(lab)).tick).toBe(2);
   }, 120000);
 });
+
+import { computeAdvice } from '../../src/components/world/advisor';
+import { snapshot as snapOf } from '../../src/hearth/api';
+describe('v0.7: advisor, research focus, deeper tech tree', () => {
+  it('the advisor reports real problems: famine, raids, hostility, housing; and nothing when all is well', () => {
+    const sim = createSim(3); stepSim(sim, 400); sim.villages[0].stock.food = 0; const adv = computeAdvice(snapOf(sim, null, 0, true));
+    expect(adv.some((a) => a.level === 'alert' && /running out of food/.test(a.text))).toBe(true); expect(adv.every((a) => a.text.length > 8 && a.village >= 0)).toBe(true);
+    const calm = createSim(3); for (const v of calm.villages) v.stock.food = 500; expect(computeAdvice(snapOf(calm, null, 0, true)).filter((a) => a.level === 'alert' && /food/.test(a.text))).toHaveLength(0);
+    const w = createSim(2); w.settlers[0].job = 'raid'; w.settlers[0].v = 1; w.settlers[0].raid = 0; expect(computeAdvice(snapOf(w, null, 0, true)).some((a) => /Raiders from/.test(a.text))).toBe(true);
+  });
+  it('the Chieftain can set a research focus only on inventions that are available', () => {
+    const sim = createSim(4); chiefCmd(sim, { k: 'chief', v: 0 }); const v = sim.villages[0]; v.techs = [];
+    chiefCmd(sim, { k: 'research', tech: 'metallurgy' }); expect(v.focus).toBe(''); chiefCmd(sim, { k: 'research', tech: 'weaving' }); expect(v.focus).toBe('weaving'); chiefCmd(sim, { k: 'research', tech: '' }); expect(v.focus).toBe('');
+    chiefCmd(sim, { k: 'research', tech: 'weaving' }); for (const s of sim.settlers) if (s.v === 0) { s.genes.curiosity = 1; s.genes.intellect = 1; }
+    for (let d = 0; d < 400 && !v.techs.includes('weaving'); d++) stepSim(sim, 240); expect(v.techs).toContain('weaving'); expect(v.focus).toBe('');
+  }, 90000);
+  it('the 15-invention tree is consistent and new inventions change the simulation without breaking it', () => {
+    const ids = Object.keys(TECHS) as TechId[]; expect(ids.length).toBe(15);
+    const dep = (t: TechId, seen: TechId[] = []): boolean => !seen.includes(t) && TECHS[t].needs.every((n) => dep(n, [...seen, t])); for (const t of ids) expect(dep(t)).toBe(true);
+    const sim = createSim(6); for (const v of sim.villages) v.techs = [...ids]; stepSim(sim, 3000); expect(sim.settlers.every((s) => Number.isFinite(s.health))).toBe(true); for (const v of sim.villages) expect(v.stock.food).toBeGreaterThanOrEqual(0);
+  }, 60000);
+});

@@ -54,7 +54,7 @@ export function App() {
           <span className="text-sm font-semibold">AI Evolution Studios</span><button onClick={() => setMenu(!menu)} aria-label="Menu">{menu ? <X /> : <Menu />}</button>
         </header>
         {menu && <div className="border-b border-white/10 bg-ink-950 p-3 md:hidden">{nav}</div>}
-        <main className="mx-auto w-full max-w-6xl p-4 sm:p-8">
+        <main className={cx('mx-auto w-full', page === 'world' ? 'p-2 sm:p-3' : 'max-w-6xl p-4 sm:p-8')}>
           <Boundary key={page}><motion.div key={page} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             {page === 'world' && <World go={(p) => go(p as PageId)} />}
             {page === 'evolution' && <Evolution />}

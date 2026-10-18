@@ -55,7 +55,7 @@ const mineB = (sim: Sim, v: Village, i: number, t: BType, needBuilt: boolean) =>
 interface Ctx { night: boolean; season: number; winter: number; pop: number[]; deerSet: Set<number>; palis: [number, number, number][] }
 const popCount = (sim: Sim, v: Village) => sim.settlers.reduce((n, s) => n + (s.alive && s.v === v.id ? 1 : 0), 0);
 const capacity = (v: Village) => 8 + 4 * v.buildings.filter((b) => b.type === 'hut' && b.built).length + Math.min(12, modPower(v, 'shelter')) + (has(v, 'masonry') ? 4 : 0);
-function toolBonus(v: Village, rng: Rng): number { if (!has(v, 'tools') || v.stock.tools <= 0) return 0; if (rng.next() < Math.min(1, v.stock.tools / Math.max(1, 0.35 * (POP[v.id] || 1)))) { if (rng.next() < 0.02) v.stock.tools--; return 1; } return 0; }
+function toolBonus(v: Village, rng: Rng): number { if (!has(v, 'tools') || v.stock.tools <= 0) return 0; if (rng.next() < Math.min(1, v.stock.tools / Math.max(1, 0.35 * (POP[v.id] || 1)))) { if (rng.next() < (has(v, 'metallurgy') ? 0.01 : 0.02)) v.stock.tools--; return 1; } return 0; }
 
 const yieldOf = (s: Settler, v: Village, rng: Rng) => { const q = qnet(s, 'yield'); return Math.max(1, 2 + toolBonus(v, rng) + (q > 0 && rng.next() < q ? 1 : q < 0 && rng.next() < -q ? -1 : 0)); };
 function die(sim: Sim, s: Settler, cause: Cause) {
@@ -146,7 +146,7 @@ const isAnimal = (a: Pred): a is Animal => 'k' in a;
 const removePred = (sim: Sim, a: Pred) => { const arr: Pred[] = isAnimal(a) ? sim.fauna : sim.wolves; arr.splice(arr.indexOf(a), 1); };
 const animalById = (sim: Sim, id: number): { a: { id: number; x: number; y: number; hp: number }; kind: string } | null => { const d = sim.deer.find((q) => q.id === id); if (d) return { a: d, kind: 'deer' }; const f = sim.fauna.find((q) => q.id === id); return f ? { a: f, kind: f.k } : null; };
 function hit(sim: Sim, a: Settler, tgt: Settler, av: Village) {
-  let dmg = 0.12 * (a.armed ? 1.5 : 1) * (0.6 + 0.8 * a.genes.courage) * (has(av, 'bows') ? 1.1 : 1) * Math.max(0.3, 1 + qnet(a, 'combat'));
+  let dmg = 0.12 * (a.armed ? 1.5 : 1) * (0.6 + 0.8 * a.genes.courage) * (has(av, 'bows') ? 1.1 : 1) * (has(av, 'metallurgy') ? 1.15 : 1) * Math.max(0.3, 1 + qnet(a, 'combat'));
   if (a.job === 'defend' && av.buildings.some((b) => b.type === 'palisade' && b.built && md(b.x, b.y, a.x, a.y) <= 6)) dmg *= 1.25;
   tgt.health -= dmg; tgt.lastHit = 'war';
 }
@@ -190,9 +190,9 @@ function complete(sim: Sim, rng: Rng, s: Settler, v: Village): boolean {
     case 'wood': if (sim.wood[i] > 0) { sim.wood[i]--; s.carry.wood += yieldOf(s, v, rng); } break;
     case 'stone': if (sim.stone[i] > 0) { sim.stone[i]--; s.carry.stone += yieldOf(s, v, rng); } break;
     case 'plant': if (sim.terrain[i] === T.FOREST && sim.wood[i] <= 2) { sim.wood[i] += 3; bio(s, sim, 'replanted trees'); } break;
-    case 'farm': { const b = buildingAt(sim, s.x, s.y); if (b && b.b.type === 'farm' && b.b.crop >= 0.6) { s.carry.food += Math.round(14 * b.b.crop); b.b.crop = 0; } break; }
-    case 'deposit': v.stock.food = Math.min(v.stock.food + s.carry.food, 60 + (built(v, 'granary') ? 90 : 0) + (built(v, 'smokehouse') ? 40 : 0) + 20 * modPower(v, 'larder')); v.stock.wood += s.carry.wood; v.stock.stone += s.carry.stone; v.stock.tools += s.carry.tools; s.carry = { food: 0, wood: 0, stone: 0, tools: 0 }; break;
-    case 'build': { const b = buildingAt(sim, s.x, s.y); if (b && !b.b.built) { const crew = sim.settlers.filter((o) => o !== s && o.alive && o.job === 'build' && o.x === s.x && o.y === s.y).length; b.b.progress += (1 / bwork(b.b.type)) * (0.7 + 0.6 * g.industry) * 5 * (1 + 0.25 * crew); if (b.b.progress >= 1) { b.b.built = true; b.b.progress = 1; sim.totals.builds++; ev(sim, 'build', `${v.name} finished a ${b.b.type}${crew ? ` (crew of ${crew + 1})` : ''}`, b.b.x, b.b.y); bio(s, sim, `helped finish a ${b.b.type} in ${v.name}`); } } break; }
+    case 'farm': { const b = buildingAt(sim, s.x, s.y); if (b && b.b.type === 'farm' && b.b.crop >= 0.6) { s.carry.food += Math.round(14 * b.b.crop * (has(v, 'husbandry') ? 1.25 : 1)); b.b.crop = 0; } break; }
+    case 'deposit': v.stock.food = Math.min(v.stock.food + s.carry.food, 60 + (has(v, 'pottery') ? 30 : 0) + (built(v, 'granary') ? 90 : 0) + (built(v, 'smokehouse') ? 40 : 0) + 20 * modPower(v, 'larder')); v.stock.wood += s.carry.wood; v.stock.stone += s.carry.stone; v.stock.tools += s.carry.tools; s.carry = { food: 0, wood: 0, stone: 0, tools: 0 }; break;
+    case 'build': { const b = buildingAt(sim, s.x, s.y); if (b && !b.b.built) { const crew = sim.settlers.filter((o) => o !== s && o.alive && o.job === 'build' && o.x === s.x && o.y === s.y).length; b.b.progress += (1 / bwork(b.b.type)) * (0.7 + 0.6 * g.industry) * 5 * (1 + 0.25 * crew) * (has(v, 'engineering') ? 1.3 : 1); if (b.b.progress >= 1) { b.b.built = true; b.b.progress = 1; sim.totals.builds++; ev(sim, 'build', `${v.name} finished a ${b.b.type}${crew ? ` (crew of ${crew + 1})` : ''}`, b.b.x, b.b.y); bio(s, sim, `helped finish a ${b.b.type} in ${v.name}`); } } break; }
     case 'craft': { const pop = POP[v.id] || 1; if (!mineB(sim, v, i, 'workshop', true)) break;
       if (has(v, 'tools') && v.stock.tools < 0.5 * pop && v.stock.wood >= 2 && v.stock.stone >= 1) { v.stock.wood -= 2; v.stock.stone -= 1; v.stock.tools += modPower(v, 'forge') > 0 ? 2 : 1; ev(sim, 'craft', `${s.name} crafted a tool in ${v.name}`, s.x, s.y, s.id); }
       else if (has(v, 'spears') && v.stock.spears < 0.3 * pop && v.stock.wood >= 2 && v.stock.stone >= 2) { v.stock.wood -= 2; v.stock.stone -= 2; v.stock.spears += modPower(v, 'forge') > 0 ? 2 : 1; ev(sim, 'craft', `${s.name} crafted a spear in ${v.name}`, s.x, s.y, s.id); } break; }
@@ -224,7 +224,7 @@ function stepSettler(sim: Sim, rng: Rng, s: Settler, v: Village, ctx: Ctx) {
   const metab = 1.15 - 0.3 * g.hardiness + 0.15 * g.industry;
   s.hunger = Math.min(1, s.hunger + HUNGER * metab * (child ? 0.6 : 1) * (1 - qnet(s, 'hunger'))); s.thirst = Math.min(1, s.thirst + THIRST * metab * (child ? 0.7 : 1) * (1 - qnet(s, 'thirst')));
   const fire = v.fire && md(s.x, s.y, v.hx, v.hy) <= 5, hut = v.buildings.some((b) => b.type === 'hut' && b.built && md(s.x, s.y, b.x, b.y) <= 2);
-  const cr = COLD[ctx.season] * ctx.winter * (ctx.night ? 1.5 : 1) * (1.15 - 0.45 * g.hardiness) * (1 - qnet(s, 'cold'));
+  const cr = COLD[ctx.season] * ctx.winter * (ctx.night ? 1.5 : 1) * (1.15 - 0.45 * g.hardiness) * (1 - qnet(s, 'cold')) * (has(v, 'weaving') ? 0.8 : 1);
   if (fire) s.cold = Math.max(0, s.cold - 0.006); else if (cr < 0.0005) s.cold = Math.max(0, s.cold - 0.002); else s.cold = Math.min(1, s.cold + cr * (hut ? (has(v, 'masonry') ? 0.2 : 0.35) : 1));
   let dmg = 0, src: Cause | '' = '';
   if (s.hunger >= 1) { dmg += 0.0035; src = 'starvation'; } if (s.thirst >= 1) { dmg += 0.006; src = 'thirst'; } if (s.cold >= 1) { dmg += 0.003; src = 'cold'; }
@@ -247,7 +247,7 @@ function stepSettler(sim: Sim, rng: Rng, s: Settler, v: Village, ctx: Ctx) {
   }
   // ---- raiders approaching: defend or flee ----
   if (t % 3 === s.id % 3 && !child && !['raid', 'defend', 'flee', 'fight'].includes(s.job)) {
-    const rad = (built(v, 'watchtower') ? 15 : 9) + 2 * modPower(v, 'beacon'); let best: Settler | null = null, bd = 99;
+    const rad = (built(v, 'watchtower') ? 15 + (has(v, 'engineering') ? 3 : 0) : 9) + 2 * modPower(v, 'beacon'); let best: Settler | null = null, bd = 99;
     let ally = false;
     for (const o of sim.settlers) if (o.alive && o.job === 'raid') { const mine = o.raid === s.v, helps = !mine && o.raid >= 0 && isAllied(sim, s.v, o.raid) && s.genes.courage > 0.4 && md(o.x, o.y, sim.villages[o.raid].hx, sim.villages[o.raid].hy) <= 14; if (!mine && !helps) continue; const d = mine ? Math.min(md(o.x, o.y, s.x, s.y), md(o.x, o.y, v.hx, v.hy)) : md(o.x, o.y, s.x, s.y) + 4; if (d < bd) { bd = d; best = o; ally = !mine; } }
     if (best && bd <= (ally ? 22 : rad)) { if ((g.courage > 0.3 || s.role === 'guard') && s.health > 0.4) { s.job = 'defend'; s.tid = best.id; s.path = []; s.thought = ally ? `rushing to help allied ${sim.villages[best.raid]?.name} against raiders from ${sim.villages[best.v]?.name}` : `defending ${v.name} against raiders from ${sim.villages[best.v]?.name}`; } else { s.job = 'flee'; s.path = bfs(sim, s.x, s.y, 40, (i) => i === idx(v.hx, v.hy)) ?? []; s.moveCd = 1; s.thought = 'fleeing raiders'; } }
@@ -433,7 +433,7 @@ function daily(sim: Sim, rng: Rng, ctx: Ctx) {
     const allied = sim.alliances.includes(k);
     if (!allied && sim.rel[k] >= 0.55 && rng.next() < 0.12) { sim.alliances.push(k); sim.rel[k] = clamp(sim.rel[k] + 0.1, -1, 1); ev(sim, 'alliance', `${A.name} and ${B.name} formed an alliance`, (A.hx + B.hx) / 2, (A.hy + B.hy) / 2); }
     else if (allied && sim.rel[k] < 0.05) { sim.alliances = sim.alliances.filter((x) => x !== k); ev(sim, 'alliance', `The alliance between ${A.name} and ${B.name} collapsed`, (A.hx + B.hx) / 2, (A.hy + B.hy) / 2); }
-    else if (allied && rng.next() < 0.08) { const [X, Y] = rng.next() < 0.5 ? [A, B] : [B, A], learnable = (Object.keys(TECHS) as TechId[]).filter((t) => has(Y, t) && canLearn(X, t)); if (learnable.length) learn(sim, X, rng.pick(learnable), `learned from its ally ${Y.name}`); }
+    else if (allied && rng.next() < (has(A, 'writing') || has(B, 'writing') ? 0.16 : 0.08)) { const [X, Y] = rng.next() < 0.5 ? [A, B] : [B, A], learnable = (Object.keys(TECHS) as TechId[]).filter((t) => has(Y, t) && canLearn(X, t)); if (learnable.length) learn(sim, X, rng.pick(learnable), `learned from its ally ${Y.name}`); }
   }
   for (const v of alive) {
     const tier = tierOf(ctx.pop[v.id]); if (tier !== v.tier) { if (['Hamlet', 'Village', 'Town', 'City'].indexOf(tier) > ['Hamlet', 'Village', 'Town', 'City'].indexOf(v.tier)) ev(sim, 'village', `${v.name} has grown into a ${tier.toLowerCase()} (${ctx.pop[v.id]} people)`, v.hx, v.hy); v.tier = tier; }
@@ -444,7 +444,8 @@ function daily(sim: Sim, rng: Rng, ctx: Ctx) {
     computeOutlook(sim, v); planBuildings(sim, rng, v, ctx); planTrade(sim, rng, v, ctx); planRaid(sim, rng, v, ctx); planHunt(sim, rng, v, ctx);
     const pop = ctx.pop[v.id], mem = sim.settlers.filter((s) => s.alive && s.v === v.id && s.age >= ADULT);
     if (pop >= 3 && mem.length) { const cands = (Object.keys(TECHS) as TechId[]).filter((k) => canLearn(v, k)), avgCur = mem.reduce((a, s) => a + s.genes.curiosity, 0) / mem.length, avgInt = mem.reduce((a, s) => a + s.genes.intellect, 0) / mem.length, avgLn = mem.reduce((a, s) => a + qnet(s, 'learn'), 0) / mem.length;
-      if (cands.length && rng.next() < 0.005 * (0.3 + 0.5 * avgCur + 0.5 * avgInt) * Math.max(0.2, 1 + avgLn) * Math.min(1.5, pop / 12)) { const tt = rng.pick(cands); learn(sim, v, tt, 'invented'); bio(rng.pick(mem), sim, `had the idea behind ${TECHS[tt].name}`); } }
+      const foc = v.focus && cands.includes(v.focus) ? v.focus : '';
+      if (cands.length && rng.next() < 0.005 * (0.3 + 0.5 * avgCur + 0.5 * avgInt) * Math.max(0.2, 1 + avgLn) * Math.min(1.5, pop / 12) * (has(v, 'writing') ? 1.3 : 1) * (foc ? 2.5 : 1)) { const tt = foc && rng.next() < 0.7 ? foc : rng.pick(cands); if (tt === v.focus) v.focus = ''; learn(sim, v, tt, 'invented'); bio(rng.pick(mem), sim, `had the idea behind ${TECHS[tt].name}`); } }
     const p = 0.01 * Math.max(0, (pop - 6) / 6) + (season === 3 ? 0.008 : 0);
     if (pop >= 3 && rng.next() < p) { let n = 0; for (const s of sim.settlers) if (s.alive && s.v === v.id && rng.next() < 0.3 * (1 - 0.5 * s.genes.hardiness) * (0.7 + 0.6 * s.genes.sociability) * (has(v, 'herbalism') ? 0.6 : 1)) { s.sick = 360; n++; } if (n) ev(sim, 'fever', `A fever swept ${v.name}: ${n} fell ill`, v.hx, v.hy); }
     if (pop >= 14 + Math.round(34 * (1 - v.doctrine.expand)) && v.stock.food >= pop * 2 && sim.villages.filter((q) => q.alive).length < 6) { const site = findSite(sim, rng, v); if (site) { const movers = sim.settlers.filter((s) => s.alive && s.v === v.id && s.age >= ADULT && s.health > 0.6 && !s.ctl).slice(0, 4); if (movers.length === 4) found(sim, rng, movers, v, site[0], site[1]); } }
@@ -477,7 +478,7 @@ export function stepSim(sim: Sim, n = 1): void {
     for (const v of sim.villages) { if (!v.alive) continue; if (t % 12 === 0 && (season === 3 || (night && season !== 1)) && v.stock.wood >= 1) { v.stock.wood--; v.fireUntil = t + 14; } v.fire = t < v.fireUntil;
       for (const b of v.buildings) if (b.type === 'farm' && b.built) b.crop = Math.min(1, b.crop + (season === 3 ? 0.0004 : 0.0011) * (has(v, 'irrigation') ? 1.5 : 1));
       if (t % 40 === 0) { const orch = modPower(v, 'orchard'); if (orch > 0) v.stock.food = Math.min(v.stock.food + Math.min(orch, 6), 200); }
-      let sp = built(v, 'granary') ? 0.00008 : 0.0003; if (built(v, 'smokehouse')) sp *= 0.4; if (has(v, 'curing')) sp *= 0.5; sp *= Math.max(0.3, 1 - 0.12 * modPower(v, 'larder')); v.stock.food = Math.max(0, v.stock.food * (1 - sp)); }
+      let sp = built(v, 'granary') ? 0.00008 : 0.0003; if (built(v, 'smokehouse')) sp *= 0.4; if (has(v, 'curing')) sp *= 0.5; sp *= Math.max(0.3, 1 - 0.12 * modPower(v, 'larder')); if (has(v, 'pottery')) sp *= 0.8; v.stock.food = Math.max(0, v.stock.food * (1 - sp)); }
     for (let r = 0; r < 60; r++) { const i = rng.int(W * H), tt = sim.terrain[i];
       if (tt === T.FOREST) { if (sim.wood[i] > 0 && sim.wood[i] < 12 && rng.next() < (season === 3 ? 0.25 : 0.5)) sim.wood[i]++; else if (sim.wood[i] === 0 && rng.next() < 0.12) { const x = i % W, y = (i / W) | 0; if (D4.some(([dx, dy]) => inB(x + dx, y + dy) && sim.wood[idx(x + dx, y + dy)] >= 4)) sim.wood[i] = 1; } }
       else if (tt === T.GRASS && sim.berry[i] >= 1 && sim.berry[i] < 4 && (season !== 3 || rng.next() < 0.2)) sim.berry[i]++;
@@ -520,8 +521,9 @@ export { makeName };
 export { CAUSES } from './types';
 
 // ---- v0.6: the Chieftain (player administration of one village) ----
-export type ChiefCmd = { k: 'chief'; v: number } | { k: 'doctrine'; key: keyof Doctrine; val: number } | { k: 'role'; sid: number; role: Role } | { k: 'order'; o: 'build'; type: BType } | { k: 'order'; o: 'caravan'; to: number; give: Good; want: Good } | { k: 'order'; o: 'raid'; to: number } | { k: 'order'; o: 'hunt' } | { k: 'order'; o: 'feast' } | { k: 'order'; o: 'ally'; to: number };
+export type ChiefCmd = { k: 'chief'; v: number } | { k: 'doctrine'; key: keyof Doctrine; val: number } | { k: 'role'; sid: number; role: Role } | { k: 'order'; o: 'build'; type: BType } | { k: 'order'; o: 'caravan'; to: number; give: Good; want: Good } | { k: 'order'; o: 'raid'; to: number } | { k: 'order'; o: 'hunt' } | { k: 'order'; o: 'feast' } | { k: 'order'; o: 'ally'; to: number } | { k: 'research'; tech: TechId | '' };
 const mkCtx = (sim: Sim): Ctx => ({ night: isNight(sim.tick), season: seasonOf(sim.tick), winter: sim.cfg.winter, pop: sim.villages.map((v) => popCount(sim, v)), deerSet: new Set(), palis: [] });
+export const capacityOf = capacity;
 export const ORDER_COOLDOWN: Record<string, number> = { caravan: 2, raid: 6, hunt: 3, feast: 6 };
 export function chiefCmd(sim: Sim, c: ChiefCmd): void {
   syncMods(sim); const rng = new Rng(0); rng.state = sim.rs;
@@ -529,6 +531,7 @@ export function chiefCmd(sim: Sim, c: ChiefCmd): void {
   const v = sim.villages[sim.chief]; if (!v || !v.alive) return;
   const fail = (m: string) => ev(sim, 'chief', `Order failed in ${v.name}: ${m}`, v.hx, v.hy), ok = (m: string) => ev(sim, 'chief', `${v.name}: ${m}`, v.hx, v.hy);
   if (c.k === 'doctrine') { v.doctrine[c.key] = clamp(c.val); return; }
+  if (c.k === 'research') { v.focus = c.tech && canLearn(v, c.tech) ? c.tech : ''; if (v.focus) ev(sim, 'chief', `${v.name}'s thinkers now focus on ${TECHS[v.focus].name}`, v.hx, v.hy); return; }
   if (c.k === 'role') { const s = sim.settlers.find((q) => q.id === c.sid && q.v === v.id && q.alive); if (s && s.age >= ADULT) { s.role = c.role; if (!['raid', 'trade', 'drink', 'eat', 'flee', 'fight', 'defend'].includes(s.job)) { s.job = 'idle'; s.path = []; s.work = -1; s.cool = 0; s.tid = -1; } } return; }
   const ctx = mkCtx(sim), pop = ctx.pop[v.id], free = sim.settlers.filter((s) => s.v === v.id && eligible(s));
   if (c.o !== 'build' && (v.orderCool[c.o] ?? 0) > 0) { fail(`${c.o} is on cooldown (${v.orderCool[c.o]} days)`); sim.rs = rng.state; return; }

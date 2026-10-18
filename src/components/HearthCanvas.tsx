@@ -6,27 +6,31 @@ const COL = ['#0c2236', '#18301f', '#0f2418', '#383d4a', '#4a4331'];
 const hash = (x: number, y: number) => ((Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0) / 4294967296;
 const nightAt = (t: number) => { const d = (t % DAY) / DAY; return d >= 0.72 ? Math.min(1, (d - 0.72) / 0.08) : d < 0.04 ? 1 : d < 0.08 ? 1 - (d - 0.04) / 0.04 : 0; };
 export const GLYPH: Record<string, string> = { hut: '⌂', farm: '▦', well: '◉', granary: '▣', palisade: '▩', hearth: '♨', workshop: '⚒', smokehouse: 'S', watchtower: '▲', market: '$' };
-export const CW = 960, CH = 600, MIN_ZOOM = Math.max(CW / W, CH / H), MAX_ZOOM = 34;
+/** The map fills whatever space it is given; the camera never shows anything outside the world. */
+export const view = { w: 960, h: 600 }, MAX_ZOOM = 34;
+export const minZoom = () => Math.max(view.w / W, view.h / H);
 export const camRef = { cx: 48, cy: 48, zoom: 10 };
 /** Keep the viewport inside the world: you can never look at empty space. */
 export function clampCam() {
-  camRef.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, camRef.zoom)); const hw = CW / 2 / camRef.zoom, hh = CH / 2 / camRef.zoom;
+  camRef.zoom = Math.min(MAX_ZOOM, Math.max(minZoom(), camRef.zoom)); const hw = view.w / 2 / camRef.zoom, hh = view.h / 2 / camRef.zoom;
   camRef.cx = W <= 2 * hw ? W / 2 : Math.min(W - hw, Math.max(hw, camRef.cx)); camRef.cy = H <= 2 * hh ? H / 2 : Math.min(H - hh, Math.max(hh, camRef.cy));
 }
-export function zoomAt(factor: number, px = CW / 2, py = CH / 2) {
-  const wx = camRef.cx + (px - CW / 2) / camRef.zoom, wy = camRef.cy + (py - CH / 2) / camRef.zoom; camRef.zoom *= factor; clampCam();
-  camRef.cx = wx - (px - CW / 2) / camRef.zoom; camRef.cy = wy - (py - CH / 2) / camRef.zoom; clampCam();
+export function zoomAt(factor: number, px = view.w / 2, py = view.h / 2) {
+  const wx = camRef.cx + (px - view.w / 2) / camRef.zoom, wy = camRef.cy + (py - view.h / 2) / camRef.zoom; camRef.zoom *= factor; clampCam();
+  camRef.cx = wx - (px - view.w / 2) / camRef.zoom; camRef.cy = wy - (py - view.h / 2) / camRef.zoom; clampCam();
 }
 export const centerOn = (x: number, y: number) => { camRef.cx = x + 0.5; camRef.cy = y + 0.5; clampCam(); };
 
 export function HearthCanvas({ onPick }: { onPick: (kind: 'settler' | 'village' | null, id: number) => void }) {
   const ref = useRef<HTMLCanvasElement>(null), terr = useRef<HTMLCanvasElement | null>(null), rend = useRef(new Map<number, [number, number]>()), drag = useRef<{ x: number; y: number; moved: boolean } | null>(null), seen = useRef<Uint8Array | null>(null);
   useEffect(() => {
-    const c = ref.current!, g = c.getContext('2d')!; let raf = 0, centered = false; c.width = CW; c.height = CH;
-    const wheel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation(); const r = c.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, ((e.clientX - r.left) * CW) / r.width, ((e.clientY - r.top) * CH) / r.height); };
+    const c = ref.current!, g = c.getContext('2d')!; let raf = 0, centered = false, dpr = 1; const wrap = c.parentElement!;
+    const resize = () => { dpr = Math.min(window.devicePixelRatio || 1, 1.5); view.w = Math.max(320, wrap.clientWidth || 960); view.h = Math.max(240, wrap.clientHeight || 600); c.width = Math.round(view.w * dpr); c.height = Math.round(view.h * dpr); clampCam(); };
+    resize(); const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null; ro?.observe(wrap);
+    const wheel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation(); const r = c.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, ((e.clientX - r.left) * view.w) / r.width, ((e.clientY - r.top) * view.h) / r.height); };
     c.addEventListener('wheel', wheel, { passive: false });
     const frame = () => {
-      raf = requestAnimationFrame(frame); const { snap, terrain, selected, follow, mode } = useHearth.getState(); if (!snap || !terrain) { g.fillStyle = '#06080c'; g.fillRect(0, 0, CW, CH); g.fillStyle = '#64748b'; g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillText('Waking the world…', CW / 2, CH / 2); return; }
+      raf = requestAnimationFrame(frame); const CW = view.w, CH = view.h; g.setTransform(dpr, 0, 0, dpr, 0, 0); const { snap, terrain, selected, follow, mode } = useHearth.getState(); if (!snap || !terrain) { g.fillStyle = '#06080c'; g.fillRect(0, 0, CW, CH); g.fillStyle = '#64748b'; g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillText('Waking the world…', CW / 2, CH / 2); return; }
       if (seen.current !== terrain) { seen.current = terrain; const o = document.createElement('canvas'); o.width = W * 8; o.height = H * 8; const og = o.getContext('2d')!; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { og.fillStyle = COL[terrain[y * W + x]]; og.globalAlpha = 0.85 + hash(x, y) * 0.15; og.fillRect(x * 8, y * 8, 8, 8); } terr.current = o; centered = false; rend.current.clear(); }
       const cam = camRef;
       if (!centered) { const v = [...snap.villages].filter((q) => q.alive).sort((a, b) => b.pop - a.pop)[0]; if (v) { cam.cx = v.hx; cam.cy = v.hy; } centered = true; }
@@ -68,13 +72,13 @@ export function HearthCanvas({ onPick }: { onPick: (kind: 'settler' | 'village' 
       g.strokeStyle = 'rgba(34,211,238,.55)'; g.lineWidth = 2; g.strokeRect(sx(0), sy(0), W * z, H * z); // world border
       const vg = g.createRadialGradient(CW / 2, CH / 2, CH * 0.45, CW / 2, CH / 2, CH * 0.95); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.35)'); g.fillStyle = vg; g.fillRect(0, 0, CW, CH);
     };
-    frame(); return () => { cancelAnimationFrame(raf); c.removeEventListener('wheel', wheel); };
+    frame(); return () => { cancelAnimationFrame(raf); c.removeEventListener('wheel', wheel); ro?.disconnect(); };
   }, []);
-  const toWorld = (e: { clientX: number; clientY: number }) => { const r = ref.current!.getBoundingClientRect(), px = ((e.clientX - r.left) * CW) / r.width, py = ((e.clientY - r.top) * CH) / r.height; return [camRef.cx + (px - CW / 2) / camRef.zoom - 0.5, camRef.cy + (py - CH / 2) / camRef.zoom - 0.5] as const; };
+  const toWorld = (e: { clientX: number; clientY: number }) => { const r = ref.current!.getBoundingClientRect(), px = ((e.clientX - r.left) * view.w) / r.width, py = ((e.clientY - r.top) * view.h) / r.height; return [camRef.cx + (px - view.w / 2) / camRef.zoom - 0.5, camRef.cy + (py - view.h / 2) / camRef.zoom - 0.5] as const; };
   return (
-    <canvas ref={ref} className="w-full cursor-grab rounded-xl border border-white/10 active:cursor-grabbing" style={{ aspectRatio: `${CW}/${CH}`, touchAction: 'none', overscrollBehavior: 'contain' }} aria-label="Hearthworld map"
+    <div className="absolute inset-0 overflow-hidden"><canvas ref={ref} className="h-full w-full cursor-grab active:cursor-grabbing" style={{ touchAction: 'none', overscrollBehavior: 'contain' }} aria-label="Hearthworld map"
       onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, moved: false }; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
-      onPointerMove={(e) => { const d = drag.current; if (!d) return; const r = ref.current!.getBoundingClientRect(), k = CW / r.width; const dx = (e.clientX - d.x) * k, dy = (e.clientY - d.y) * k; if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true; camRef.cx -= dx / camRef.zoom; camRef.cy -= dy / camRef.zoom; clampCam(); d.x = e.clientX; d.y = e.clientY; if (d.moved) useHearth.getState().setFollow(false); }}
-      onPointerUp={(e) => { const d = drag.current; drag.current = null; if (d?.moved) return; const snap = useHearth.getState().snap; if (!snap) return; const [wx, wy] = toWorld(e); let best = -1, bd = 1.2; for (const s of snap.settlers) { const r = rend.current.get(s.id) ?? [s.x, s.y], dd = Math.hypot(r[0] - wx, r[1] - wy); if (dd < bd) { bd = dd; best = s.id; } } if (best >= 0) { onPick('settler', best); return; } const v = snap.villages.find((q) => Math.hypot(q.hx - wx, q.hy - wy) < 2); onPick(v ? 'village' : null, v?.id ?? -1); }} />
+      onPointerMove={(e) => { const d = drag.current; if (!d) return; const r = ref.current!.getBoundingClientRect(), k = view.w / r.width; const dx = (e.clientX - d.x) * k, dy = (e.clientY - d.y) * k; if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true; camRef.cx -= dx / camRef.zoom; camRef.cy -= dy / camRef.zoom; clampCam(); d.x = e.clientX; d.y = e.clientY; if (d.moved) useHearth.getState().setFollow(false); }}
+      onPointerUp={(e) => { const d = drag.current; drag.current = null; if (d?.moved) return; const snap = useHearth.getState().snap; if (!snap) return; const [wx, wy] = toWorld(e); let best = -1, bd = 1.2; for (const s of snap.settlers) { const r = rend.current.get(s.id) ?? [s.x, s.y], dd = Math.hypot(r[0] - wx, r[1] - wy); if (dd < bd) { bd = dd; best = s.id; } } if (best >= 0) { onPick('settler', best); return; } const v = snap.villages.find((q) => Math.hypot(q.hx - wx, q.hy - wy) < 2); onPick(v ? 'village' : null, v?.id ?? -1); }} /></div>
   );
 }

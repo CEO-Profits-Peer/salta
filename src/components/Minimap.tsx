@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useHearth } from '../app/hearthStore';
 import { H, W } from '../hearth/types';
-import { CH, CW, camRef, clampCam } from './HearthCanvas';
+import { camRef, clampCam, view } from './HearthCanvas';
 
 const COL = ['#0c2236', '#18301f', '#0f2418', '#4a5062', '#4a4331'];
 export function Minimap() {
@@ -15,7 +15,7 @@ export function Minimap() {
       for (const v of snap.villages) { g.fillStyle = v.color; g.globalAlpha = v.alive ? 1 : 0.3; g.fillRect(v.hx * k - 2, v.hy * k - 2, 5, 5); } g.globalAlpha = 1;
       for (const s of snap.settlers) { g.fillStyle = s.ctl ? '#fff' : snap.villages[s.v]?.color ?? '#fff'; g.fillRect(s.x * k, s.y * k, s.ctl ? 3 : 1.5, s.ctl ? 3 : 1.5); }
       for (const w of snap.wolves) { g.fillStyle = '#f87171'; g.fillRect(w[1] * k, w[2] * k, 2, 2); }
-      g.strokeStyle = '#fff'; g.lineWidth = 1; g.strokeRect((camRef.cx - CW / 2 / camRef.zoom) * k, (camRef.cy - CH / 2 / camRef.zoom) * k, (CW / camRef.zoom) * k, (CH / camRef.zoom) * k);
+      g.strokeStyle = '#fff'; g.lineWidth = 1; g.strokeRect((camRef.cx - view.w / 2 / camRef.zoom) * k, (camRef.cy - view.h / 2 / camRef.zoom) * k, (view.w / camRef.zoom) * k, (view.h / camRef.zoom) * k);
     };
     draw(); const t = setInterval(draw, 200); return () => clearInterval(t);
   }, []);

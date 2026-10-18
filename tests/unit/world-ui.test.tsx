@@ -18,14 +18,22 @@ beforeAll(async () => {
 afterEach(cleanup);
 
 describe('Hearthworld pages with a real simulated snapshot', () => {
-  it('World shows time, villages, and an inspector with thoughts and genes', async () => {
-    const { World } = await import('../../src/pages/World'); render(<World />);
-    expect(screen.getByText(/Tribes that trade/)).toBeTruthy(); expect(screen.getByText(/Year 1/)).toBeTruthy();
+  it('World: HUD, panel rail, inspector, and every panel opens with real data', async () => {
+    const { World } = await import('../../src/pages/World'); const { useUi } = await import('../../src/app/uiStore'); render(<World />);
+    expect(screen.getByLabelText('Panels')).toBeTruthy(); expect(screen.getByText(/Y1 · /)).toBeTruthy();
     const s = useHearth.getState().snap!.settlers[0]; act(() => useHearth.getState().select({ kind: 'settler', id: s.id }));
-    expect(screen.getAllByText(s.name).length).toBeGreaterThan(0); expect(screen.getByText(/Genes/)).toBeTruthy();
-    fireEvent.click(screen.getByText('villages')); expect(screen.getAllByText(/people/).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByText('events')); expect(screen.getAllByText(/Y0\./).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByText('Wanderer')); expect(useHearth.getState().mode).toBe('wanderer');
+    expect(screen.getByLabelText('Inspector')).toBeTruthy(); expect(screen.getAllByText(s.name).length).toBeGreaterThan(0); expect(screen.getByText(/Genes/)).toBeTruthy(); expect(screen.getByText('intellect')).toBeTruthy();
+    const open = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+    open('Village'); expect(screen.getByText('prosperity')).toBeTruthy(); expect(screen.getByText(/What the adults are doing/)).toBeTruthy();
+    open('Inventions'); expect(screen.getByRole('img', { name: 'Invention tree' })).toBeTruthy(); expect(screen.getByText('Who knows what')).toBeTruthy();
+    open('Events'); expect(screen.getByText('Highlights')).toBeTruthy(); fireEvent.click(screen.getByText('Everything'));
+    open('People'); expect(screen.getByPlaceholderText(/Search by name/)).toBeTruthy();
+    open('Diplomacy'); expect(screen.getByText('alliances')).toBeTruthy();
+    open('Chieftain'); expect(screen.getByText(/Choose a village to lead/)).toBeTruthy();
+    open('Codex'); expect(screen.getByText(/Terrain & resources/)).toBeTruthy();
+    expect(useUi.getState().panel).toBe('codex'); fireEvent.keyDown(window, { key: 'Escape' }); expect(useUi.getState().panel).toBeNull();
+    fireEvent.keyDown(window, { key: 'v' }); expect(useUi.getState().panel).toBe('village'); fireEvent.keyDown(window, { key: 'v' }); expect(useUi.getState().panel).toBeNull();
+    fireEvent.click(screen.getByText('wanderer')); expect(useHearth.getState().mode).toBe('wanderer'); fireEvent.click(screen.getByText('observe'));
   });
   it('Evolution renders strategy table and selection note', async () => {
     const { Evolution } = await import('../../src/pages/Evolution'); render(<Evolution />);
@@ -43,7 +51,7 @@ describe('legend, menu and camera limits', () => {
     useHearth.setState({ menuOpen: true, worlds: [{ id: 'a', name: 'First', created: 1, savedAt: 1, tick: 7680, pop: 40 }, { id: 'b', name: 'Second', created: 2, savedAt: 2, tick: 0, pop: 0 }], currentId: 'a' });
     const { GameMenu } = await import('../../src/components/GameMenu'); render(<GameMenu go={() => {}} />);
     expect(screen.getByText('First')).toBeTruthy(); expect(screen.getByText('Second')).toBeTruthy(); expect(screen.getByText(/Create a new world/)).toBeTruthy(); cleanup(); useHearth.setState({ menuOpen: false });
-    const { camRef, clampCam, zoomAt, MIN_ZOOM, MAX_ZOOM } = await import('../../src/components/HearthCanvas');
+    const { camRef, clampCam, zoomAt, minZoom, MAX_ZOOM } = await import('../../src/components/HearthCanvas'); const MIN_ZOOM = minZoom();
     camRef.zoom = 1; camRef.cx = -500; camRef.cy = 900; clampCam(); expect(camRef.zoom).toBe(MIN_ZOOM); expect(camRef.cx).toBe(48);
     camRef.zoom = 30; camRef.cx = 0; camRef.cy = 0; clampCam(); expect(camRef.cx).toBeGreaterThanOrEqual(480 / 30 - 1e-9); expect(camRef.cy).toBeGreaterThanOrEqual(300 / 30 - 1e-9);
     for (let i = 0; i < 60; i++) zoomAt(1.2, 900, 40); expect(camRef.zoom).toBe(MAX_ZOOM); expect(camRef.cx).toBeLessThanOrEqual(96 - 480 / MAX_ZOOM + 1e-9);

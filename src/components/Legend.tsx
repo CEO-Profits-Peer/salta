@@ -16,14 +16,10 @@ const KEYS: Record<string, [string, string][]> = {
   Wanderer: [['WASD', 'move the Wanderer'], ['E', 'gather here'], ['F', 'feed or warm the nearest settler'], ['G', 'leave supplies at a hearth']],
   Settler: [['WASD / arrows', 'walk'], ['E', 'interact: drink, eat, gather, fish, plant, build, farm, craft'], ['Space', 'fight / hunt what is next to you'], ['G', 'deposit your load at the hearth'], ['F', 'give food to a hungry neighbour'], ['R', 'release your settler']],
 };
-/** Collapsible legend: symbols, buildings, inventions and controls. */
-export function Legend({ mode }: { mode: 'observe' | 'wanderer' | 'settler' }) {
-  const [open, setOpen] = useState(() => localStorage.getItem('aes-legend') === '1'), mods = useHearth((s) => s.snap?.mods);
-  const toggle = () => { setOpen(!open); localStorage.setItem('aes-legend', open ? '0' : '1'); };
-  return (
-    <div className="pointer-events-auto absolute bottom-3 left-3 w-[300px] max-w-[calc(100%-1.5rem)] rounded-xl border border-white/10 bg-ink-950/90 text-xs backdrop-blur">
-      <button onClick={toggle} className="flex w-full items-center justify-between px-3 py-2 text-slate-200" aria-expanded={open}><span className="flex items-center gap-2"><BookOpen size={14} className="text-acc" />Legend & controls</span>{open ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</button>
-      {open && (<div className="max-h-[52vh] overflow-auto px-3 pb-2">
+/** The legend content, also shown in the Codex panel. */
+export function LegendBody({ mode }: { mode: 'observe' | 'wanderer' | 'settler' }) {
+  const mods = useHearth((s) => s.snap?.mods);
+  return (<>
         <Sec title="Terrain & resources" open>
           <Row icon={<span className="h-3 w-4 rounded-sm" style={{ background: '#0c2236' }} />} label="Water" desc="Drinkable at the shore. Blocks walking." /><Row icon={<span className="h-3 w-4 rounded-sm" style={{ background: '#18301f' }} />} label="Grass" desc="Berry bushes (red dot) regrow when left alone." />
           <Row icon={<span className="h-3 w-4 rounded-sm" style={{ background: '#0f2418' }} />} label="Forest" desc="Green trees = wood. Cut too much and it stays bare; trees only regrow next to other trees. Replant to speed it up." />
@@ -41,7 +37,16 @@ export function Legend({ mode }: { mode: 'observe' | 'wanderer' | 'settler' }) {
         <Sec title="Inventions">{Object.entries(TECHS).map(([k, t]) => <Row key={k} icon={<span className="text-amb">✦</span>} label={t.name} desc={`${t.desc}${t.needs.length ? ` (needs ${t.needs.map((n) => TECHS[n].name).join(', ')})` : ''}`} />)}<p className="pt-1 text-[11px] text-slate-500">Villages invent on their own and learn from traders, loot and migrants.</p></Sec>
         {mods && mods.creatures.length + mods.buildings.length + mods.quirks.length > 0 && <Sec title="AI-created content (Content Lab)">{mods.creatures.map((c) => <Row key={c.id} icon={<Dot c={`hsl(${c.hue} 65% 55%)`} ring={c.role === 'predator' ? '#f87171' : undefined} />} label={`${c.name} (${c.role})`} desc={`${c.hp} hp · ${c.meat} food · herds of ~${c.herd}`} />)}{mods.buildings.map((b) => <Row key={b.id} icon={<span className="text-slate-200">{b.glyph}</span>} label={`${b.name} · ${b.wood} wood${b.stone ? ` + ${b.stone} stone` : ''}`} desc={b.desc} />)}{mods.quirks.map((q) => <Row key={q.id} icon={<span>🧬</span>} label={q.name} desc={q.desc} />)}</Sec>}
         <Sec title={`Controls: ${mode}`} open>{KEYS[mode[0].toUpperCase() + mode.slice(1)].map(([k, d]) => <div key={k} className="flex gap-2 py-0.5"><span className={cx('mono w-28 shrink-0 text-slate-200')}>{k}</span><span className="text-slate-500">{d}</span></div>)}</Sec>
-      </div>)}
+      </>);
+}
+/** Collapsible legend: symbols, buildings, inventions and controls. */
+export function Legend({ mode }: { mode: 'observe' | 'wanderer' | 'settler' }) {
+  const [open, setOpen] = useState(() => localStorage.getItem('aes-legend') === '1');
+  const toggle = () => { setOpen(!open); localStorage.setItem('aes-legend', open ? '0' : '1'); };
+  return (
+    <div className="pointer-events-auto absolute bottom-3 left-3 w-[300px] max-w-[calc(100%-1.5rem)] rounded-xl border border-white/10 bg-ink-950/90 text-xs backdrop-blur">
+      <button onClick={toggle} className="flex w-full items-center justify-between px-3 py-2 text-slate-200" aria-expanded={open}><span className="flex items-center gap-2"><BookOpen size={14} className="text-acc" />Legend & controls</span>{open ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</button>
+      {open && (<div className="max-h-[52vh] overflow-auto px-3 pb-2"><LegendBody mode={mode} /></div>)}
     </div>
   );
 }

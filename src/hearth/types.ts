@@ -8,11 +8,13 @@ export type Doctrine = Record<(typeof DOCTRINE_KEYS)[number], number>;
 export type Cause = 'starvation' | 'thirst' | 'cold' | 'wolf' | 'beast' | 'war' | 'fever' | 'old age' | 'accident';
 export const CAUSES: Cause[] = ['starvation', 'thirst', 'cold', 'wolf', 'beast', 'war', 'fever', 'old age', 'accident'];
 export type Good = 'food' | 'wood' | 'stone' | 'tools';
-export type TechId = 'tools' | 'spears' | 'bows' | 'irrigation' | 'curing' | 'herbalism' | 'masonry' | 'tallies' | 'diplomacy';
+export type TechId = 'tools' | 'spears' | 'bows' | 'irrigation' | 'curing' | 'herbalism' | 'masonry' | 'tallies' | 'diplomacy' | 'pottery' | 'weaving' | 'husbandry' | 'metallurgy' | 'writing' | 'engineering';
 export const TECHS: Record<TechId, { name: string; desc: string; needs: TechId[] }> = {
   tools: { name: 'Stone Tools', desc: 'Workshop; tools raise gathering yields', needs: [] }, spears: { name: 'Spears', desc: 'Armed warriors and hunters hit harder', needs: ['tools'] }, bows: { name: 'Bows', desc: 'Better hunting and combat', needs: ['spears'] },
   irrigation: { name: 'Irrigation', desc: 'Farms ripen 50% faster', needs: ['tools'] }, curing: { name: 'Smoke-Curing', desc: 'Food spoils half as fast', needs: [] }, herbalism: { name: 'Herbalism', desc: 'Fevers are milder and spread less', needs: [] },
-  masonry: { name: 'Masonry', desc: 'Warmer huts, larger villages', needs: ['tools'] }, tallies: { name: 'Tally Marks', desc: 'Fairer trade, easier friendships', needs: [] }, diplomacy: { name: 'Diplomacy', desc: 'Fewer wars, faster peace', needs: ['tallies'] },
+  masonry: { name: 'Masonry', desc: 'Warmer huts, larger villages', needs: ['tools'] },
+  pottery: { name: 'Pottery', desc: 'Bigger stockpile, slower spoilage', needs: ['tools'] }, weaving: { name: 'Weaving', desc: 'Clothing: the cold bites 20% less', needs: [] }, husbandry: { name: 'Husbandry', desc: 'Farms yield 25% more', needs: ['irrigation'] },
+  metallurgy: { name: 'Metallurgy', desc: 'Tools last longer, weapons hit harder', needs: ['masonry', 'spears'] }, writing: { name: 'Writing', desc: 'Faster invention and knowledge sharing', needs: ['tallies'] }, engineering: { name: 'Engineering', desc: 'Buildings go up 30% faster, towers see farther', needs: ['masonry', 'writing'] }, tallies: { name: 'Tally Marks', desc: 'Fairer trade, easier friendships', needs: [] }, diplomacy: { name: 'Diplomacy', desc: 'Fewer wars, faster peace', needs: ['tallies'] },
 };
 export type Job = 'idle' | 'drink' | 'eat' | 'forage' | 'hunt' | 'farm' | 'wood' | 'stone' | 'build' | 'deposit' | 'warm' | 'flee' | 'fight' | 'craft' | 'trade' | 'raid' | 'defend' | 'fish' | 'plant' | 'feast';
 export type BaseBType = 'hearth' | 'hut' | 'farm' | 'well' | 'granary' | 'palisade' | 'workshop' | 'smokehouse' | 'watchtower' | 'market';
@@ -26,7 +28,7 @@ export interface Settler {
 }
 export interface Building { type: BType; x: number; y: number; built: boolean; progress: number; crop: number }
 export interface Village {
-  id: number; name: string; color: string; hx: number; hy: number; doctrine: Doctrine; stock: { food: number; wood: number; stone: number; tools: number; spears: number }; techs: TechId[]; tier: string; raidCool: number; tradeCool: number; huntCool: number; orderCool: Record<string, number>; vstats: VStats; outlook: Outlook; buildings: Building[];
+  id: number; name: string; color: string; hx: number; hy: number; doctrine: Doctrine; stock: { food: number; wood: number; stone: number; tools: number; spears: number }; techs: TechId[]; tier: string; focus: TechId | ''; raidCool: number; tradeCool: number; huntCool: number; orderCool: Record<string, number>; vstats: VStats; outlook: Outlook; buildings: Building[];
   founded: number; alive: boolean; peak: number; births: number; deaths: number; fire: boolean; fireUntil: number; lastWolfDeath: number; parent: number;
 }
 export interface Outlook { wood: number; berry: number; fish: number; stone: number; game: number }
